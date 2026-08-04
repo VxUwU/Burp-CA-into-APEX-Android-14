@@ -1,0 +1,11 @@
+# Force LF for shell scripts & text so they run on Android/Linux (never CRLF)
+* text=auto eol=lf
+*.sh text eol=lf
+*.prop text eol=lf
+*.md text eol=lf
+
+# Binary assets — never touch line endings
+*.zip binary
+*.0 binary
+*.der binary
+*.p12 binary

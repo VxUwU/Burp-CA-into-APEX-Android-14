@@ -1,0 +1,25 @@
+# build artifacts / temp
+*.log
+certfix.log
+/tmp/
+*.tmp
+
+# OS junk
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Built module zip (users build their own)
+dist/*.zip
+
+# Personal CA certs — this repo ships NO cert; users add their own locally.
+# Ignored so nobody accidentally commits their (fingerprinting) CA.
+module-source/certs/*.0
+
+# NEVER commit private keys — only the public CA cert belongs here
+*.key
+*.pem.key
+*.p12
+*.pfx
+private*
+*_private*

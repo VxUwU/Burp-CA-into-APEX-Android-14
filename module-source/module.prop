@@ -1,0 +1,6 @@
+id=apex_burp_ca
+name=Burp CA into APEX (Android 14+)
+version=v1.0
+versionCode=1
+author=VxU
+description=Injects PortSwigger/Burp CA into the conscrypt APEX trust store at post-fs-data (before zygote) so ALL apps trust it. Reversible: disable/remove module + reboot.
