@@ -1,4 +1,4 @@
-# Tutorial: Trust your Burp CA on Android 14/15/16 (all apps)
+# Getting Started: Trust your Burp CA on Android 14/15/16 (all apps)
 
 A complete, beginner-friendly walkthrough. By the end, **every app** on your rooted device
 will trust your Burp Suite CA, so you can intercept HTTPS traffic.
