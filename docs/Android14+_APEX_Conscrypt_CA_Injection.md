@@ -94,7 +94,7 @@ zygote64: apex trust store berisi Burp CA
 systemui : apex trust store berisi 9a5ba575.0  (Burp)  <-- semua app inherit
 ```
 
-End-to-end: **Chrome** dan app target **`land.lifeoasis.maum`** ke-intercept di Burp tanpa error sertifikat.
+End-to-end: **Chrome** dan app target **`land.xxx.xxx`** ke-intercept di Burp tanpa error sertifikat.
 
 ## 8. Yang TIDAK bisa diselesaikan teknik ini
 
