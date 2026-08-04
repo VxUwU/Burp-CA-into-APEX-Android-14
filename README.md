@@ -19,6 +19,7 @@ Since **Android 14 (API 34)** the system CA store apps actually read moved to th
 
 Old "trust user certs" modules write to `/system/etc/...` which is now **ignored**, so HTTPS interception fails for most apps. This module overlays the APEX store with `system CAs + your CA` via **tmpfs + bind mount**, done **before zygote starts** so all forked apps inherit it.
 
+📖 **New here? Start with the step-by-step [Tutorial](docs/TUTORIAL.md).**
 Full technical writeup: [`docs/Android14+_APEX_Conscrypt_CA_Injection.md`](docs/Android14+_APEX_Conscrypt_CA_Injection.md)
 
 ## Repo layout
