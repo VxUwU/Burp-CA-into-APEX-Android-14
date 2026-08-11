@@ -114,6 +114,57 @@
   .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
   .switch{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);font-weight:600}
   .switch input{width:16px;height:16px;accent-color:var(--accent)}
+
+  /* ===================== Dopamine glossy layer ===================== */
+  :root{ --ring:rgba(37,230,164,.5); }
+  @media (prefers-color-scheme: dark){ :root{ --ring:rgba(37,230,164,.42); } }
+
+  /* moving aurora behind everything */
+  body{ overflow-x:hidden; position:relative; }
+  body::before{ content:""; position:fixed; inset:-30% -20%; z-index:-1; pointer-events:none;
+    background:
+      radial-gradient(38% 40% at 20% 24%, rgba(16,201,138,.55), transparent 70%),
+      radial-gradient(34% 36% at 82% 16%, rgba(10,167,194,.50), transparent 70%),
+      radial-gradient(42% 44% at 62% 88%, rgba(80,230,180,.42), transparent 72%),
+      radial-gradient(36% 38% at 10% 82%, rgba(34,201,214,.40), transparent 72%);
+    filter:blur(48px) saturate(150%);
+    animation:aurora 18s ease-in-out infinite alternate; }
+  @keyframes aurora{
+    0%{transform:translate3d(0,0,0) scale(1)}
+    50%{transform:translate3d(2%,-2%,0) scale(1.08)}
+    100%{transform:translate3d(-2%,1%,0) scale(1.04)} }
+
+  /* gradient shimmer title */
+  h1{ background:linear-gradient(115deg,var(--fg),var(--accent) 55%,var(--accent-2));
+      -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+      filter:drop-shadow(0 1px 10px rgba(16,201,138,.25)); }
+
+  /* glossier glass: brighter specular top, deeper blur, soft color glow */
+  .glass{ border-radius:22px;
+    background:linear-gradient(135deg, rgba(255,255,255,.50), rgba(255,255,255,.05) 30%, transparent 56%), var(--glass);
+    box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,.60), inset 0 -18px 34px rgba(255,255,255,.05);
+    -webkit-backdrop-filter:blur(26px) saturate(200%); backdrop-filter:blur(26px) saturate(200%); }
+  .glass::after{ content:""; position:absolute; left:0; right:0; top:0; height:52%;
+    border-radius:inherit; pointer-events:none;
+    background:linear-gradient(180deg, rgba(255,255,255,.30), transparent);
+    -webkit-mask:linear-gradient(#000,transparent); mask:linear-gradient(#000,transparent); }
+
+  /* glossy primary buttons with a slow shine sweep */
+  button{ border-radius:15px; }
+  button.enable{ position:relative; overflow:hidden;
+    box-shadow:0 8px 26px rgba(16,201,138,.5), inset 0 1px 0 rgba(255,255,255,.55); }
+  button.enable::before{ content:""; position:absolute; top:0; left:-65%; width:45%; height:100%;
+    background:linear-gradient(100deg, transparent, rgba(255,255,255,.6), transparent);
+    transform:skewX(-18deg); animation:shine 4s ease-in-out infinite; }
+  button.enable:disabled::before{ animation:none; }
+  @keyframes shine{ 0%,55%{left:-65%} 100%{left:135%} }
+
+  /* neon glow accents */
+  .pill.on{ box-shadow:0 0 0 1px var(--ring), 0 0 20px var(--ok-bg); }
+  .pill .dot{ box-shadow:0 0 10px currentColor, 0 0 4px currentColor; }
+  .tab.active{ box-shadow:0 8px 22px rgba(16,201,138,.5), inset 0 1px 0 rgba(255,255,255,.5); }
+  .chip.imported{ box-shadow:0 0 14px var(--ok-bg); }
+  .fp{ text-shadow:0 0 10px rgba(16,201,138,.15); }
 </style>
 </head>
 <body>

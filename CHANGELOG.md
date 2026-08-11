@@ -2,6 +2,13 @@
 
 All notable changes to this module. Dates are ISO (UTC).
 
+## [v1.8] — 2026-08-11
+### Changed
+- **Glossier "Dopamine"-style WebUI.** Added a moving aurora background, thicker frosted glass
+  with brighter specular highlights, a gradient-shimmer title, glossy primary buttons with a slow
+  shine sweep, and neon glow on the status pill, active tab, and imported chips. Purely visual —
+  no behaviour change; both light and dark themes tuned.
+
 ## [v1.7] — 2026-08-11
 ### Added
 - **CA validation on import (WebUI).** The Certs tab now parses X.509 **basicConstraints**
