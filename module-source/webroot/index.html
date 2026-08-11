@@ -87,7 +87,11 @@
       white-space:pre-wrap;word-break:break-word;border:1px solid var(--glass-brd)}
   .hint{color:var(--muted);font-size:12px;margin:12px 0 0;line-height:1.55}
   .head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px}
-  .tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:6px;margin-bottom:14px}
+  .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:6px;margin-bottom:14px}
+  .tab{min-width:0}
+  select{width:100%;border-radius:12px;border:1px solid var(--glass-brd);
+      background:var(--glass-2);color:var(--fg);padding:11px 12px;font-size:13px;
+      -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
   .tab{padding:11px 6px;text-align:center;font-size:14px;font-weight:700;border-radius:12px;
        color:var(--muted);cursor:pointer;transition:.18s}
   .tab.active{background:linear-gradient(135deg,var(--accent),var(--accent-2));
@@ -179,6 +183,7 @@
   <div class="tabs glass">
     <div class="tab active" data-pane="control">Control</div>
     <div class="tab" data-pane="certs">Certs</div>
+    <div class="tab" data-pane="verify">Verify</div>
     <div class="tab" data-pane="log">Log</div>
   </div>
 
@@ -214,6 +219,21 @@
         <button class="enable wide" id="btnImport">Import &amp; apply</button>
       </div>
       <p class="hint" id="impStatus">Computes the Android <code>subject_hash_old</code> name in-browser (no openssl needed), saves it to an update-proof folder outside the module, and re-applies both trust stores.</p>
+    </div>
+  </div>
+
+  <!-- VERIFY -->
+  <div class="pane" id="pane-verify">
+    <p class="sec">Verify a target app</p>
+    <div class="card glass">
+      <div class="toolbar">
+        <select id="appSel" style="flex:1"></select>
+        <button class="sm" id="btnAppReload">Reload</button>
+      </div>
+      <div class="btns"><button class="enable wide" id="btnCheck">Check trust</button></div>
+      <div id="verifyOut"></div>
+      <p class="hint">Open the target app on the device first, then Check. Reads the app's own mount
+        namespace — <b>trusts CA but still not intercepting ⇒ certificate pinning</b> (use Frida).</p>
     </div>
   </div>
 
@@ -509,6 +529,42 @@ async function importCert(){
   } else { st.textContent="Write failed: "+(r.stderr||r.errno); }
 }
 
+/* ---------- Verify ---------- */
+async function loadApps(){
+  const sel=document.getElementById("appSel");
+  const keep=sel.value;
+  sel.innerHTML='<option>Loading…</option>';
+  const r=await exec(`sh ${INJECT} apps`);
+  const list=(r.stdout||"").split("\n").map(s=>s.trim()).filter(Boolean);
+  if(!list.length){ sel.innerHTML='<option value="">(no third-party apps found)</option>'; return; }
+  sel.innerHTML=list.map(p=>`<option value="${esc(p)}"${p===keep?" selected":""}>${esc(p)}</option>`).join("");
+}
+async function checkApp(){
+  const pkg=document.getElementById("appSel").value;
+  const out=document.getElementById("verifyOut");
+  if(!pkg){ out.innerHTML='<p class="hint">Pick an app first.</p>'; return; }
+  out.innerHTML='<p class="hint">Checking…</p>';
+  const r=await exec(`sh ${INJECT} check '${pkg}'`);
+  const kv=parseKV(r.stdout);
+  if(kv.running==="no"){
+    out.innerHTML=`<div class="card glass"><div class="chead"><span class="cn">${esc(pkg)}</span>`+
+      `<span class="chip">not running</span></div>`+
+      `<p class="hint">This app isn't running, so its namespace can't be read. Open it on the device, then Check again.</p></div>`;
+    return;
+  }
+  const trusts=kv.burp_visible==="yes";
+  const verdict = trusts
+    ? `<b style="color:var(--ok)">Trusts your CA ✓</b> — if traffic still isn't intercepted, it's <b>certificate pinning</b>. Bypass with Frida/objection.`
+    : `<b style="color:var(--off)">Does NOT see your CA ✗</b> — this process started before injection (or on a device where it didn't propagate). Force-stop &amp; reopen the app, or reboot.`;
+  out.innerHTML=
+    `<div class="card glass">`+
+    `<div class="chead"><span class="cn">${esc(pkg)}</span><span class="chip imported">pid ${esc(kv.pid||"?")}</span></div>`+
+    `<div class="meta"><span>APEX store seen</span><b>${esc(kv.apex_count||"?")} certs</b></div>`+
+    `<div class="meta${trusts?"":" warn"}"><span>Your CA visible</span><b>${trusts?"yes ✓":"no ✗"}</b></div>`+
+    `<p class="hint">${verdict}</p>`+
+    `</div>`;
+}
+
 /* ---------- Log ---------- */
 let autoTimer=null;
 async function loadLog(){
@@ -533,12 +589,15 @@ function showTab(name){
   document.querySelectorAll(".pane").forEach(p=>p.classList.toggle("active",p.id==="pane-"+name));
   if(name==="log") loadLog();
   if(name==="certs") loadCerts();
+  if(name==="verify") loadApps();
 }
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>showTab(t.dataset.pane));
 document.getElementById("btnEnable").onclick=()=>act("apply");
 document.getElementById("btnDisable").onclick=()=>act("remove");
 document.getElementById("btnRefresh").onclick=refresh;
 document.getElementById("btnImport").onclick=importCert;
+document.getElementById("btnCheck").onclick=checkApp;
+document.getElementById("btnAppReload").onclick=loadApps;
 document.getElementById("btnLog2").onclick=loadLog;
 document.getElementById("btnCopy").onclick=copyLog;
 document.getElementById("auto").onchange=toggleAuto;

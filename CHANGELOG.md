@@ -2,6 +2,15 @@
 
 All notable changes to this module. Dates are ISO (UTC).
 
+## [v2.1] — 2026-08-11
+### Added
+- **Per-app trust verification (new "Verify" WebUI tab).** Pick any installed third-party app and
+  the module `nsenter`s into that running process's mount namespace to report whether it actually
+  sees your CA (`apex_count` + CA present). Turns the classic guess into a straight answer: *trusts
+  the CA but still not intercepting* ⇒ **certificate pinning** (use Frida); *doesn't see the CA* ⇒
+  process started before injection (force-stop/reopen or reboot); *not running* ⇒ open it first.
+  New `inject.sh apps` (package picker) and `inject.sh check <pkg>` subcommands.
+
 ## [v2.0] — 2026-08-11
 ### Added
 - **Boot self-test + one auto-retry.** After binding the overlay, `apply` verifies a managed CA is

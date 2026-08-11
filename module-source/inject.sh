@@ -1,11 +1,13 @@
 #!/system/bin/sh
 # Shared CA injection logic used by post-fs-data.sh (boot), the WebUI, and uninstall.sh.
-# Usage: inject.sh {apply|remove|status|list|del <name>}
-#   apply       -> clear disabled flag, mount system store + install user store (Chrome)
-#   remove      -> set disabled flag, unmount live + remove user-store certs
-#   status      -> print key=value lines for the WebUI
-#   list        -> print "source|name" for every managed cert (bundled + imported)
-#   del <name>  -> delete an imported/bundled cert everywhere, then re-apply
+# Usage: inject.sh {apply|remove|status|list|apps|check <pkg>|del <name>}
+#   apply        -> clear disabled flag, mount system store + install user store (Chrome)
+#   remove       -> set disabled flag, unmount live + remove user-store certs
+#   status       -> print key=value lines for the WebUI
+#   list         -> print "source|name" for every managed cert (bundled + imported)
+#   apps         -> list installed third-party packages (WebUI target picker)
+#   check <pkg>  -> report whether the RUNNING target sees the CA in its own namespace
+#   del <name>   -> delete an imported/bundled cert everywhere, then re-apply
 #
 # Certs come from TWO dirs:
 #   $MODDIR/certs   -> bundled in the zip (returns on reflash)
@@ -158,6 +160,35 @@ list() {
   for c in "$EXTRA"/*;        do [ -f "$c" ] && echo "imported|$(basename "$c")"; done
 }
 
+# List installed third-party packages (for the WebUI target picker).
+apps() {
+  pm list packages -3 2>/dev/null | sed 's/^package://' | sort
+}
+
+# Per-app trust check: does the RUNNING target actually see the managed CA in its
+# own mount namespace? Answers "not trusted vs. pinning" without guessing.
+check() {
+  pkg="$1"
+  [ -z "$pkg" ] && { echo "error=no package given"; return; }
+  echo "pkg=$pkg"
+  pid=$(pidof "$pkg" 2>/dev/null | awk '{print $1}')
+  if [ -z "$pid" ]; then echo "running=no"; return; fi
+  echo "running=yes"
+  echo "pid=$pid"
+  echo "managed=$(src_files | wc -l)"
+  if command -v nsenter >/dev/null 2>&1; then
+    echo "apex_count=$(nsenter -t "$pid" -m -- ls "$APEX" 2>/dev/null | wc -l)"
+    vis=no
+    for c in $(src_files); do
+      nsenter -t "$pid" -m -- ls "$APEX/$(basename "$c")" >/dev/null 2>&1 && vis=yes
+    done
+    echo "burp_visible=$vis"
+  else
+    echo "apex_count=?"
+    echo "burp_visible=unknown"
+  fi
+}
+
 del() {
   name="$1"
   [ -z "$name" ] && { echo "usage: del <name>"; exit 1; }
@@ -175,6 +206,8 @@ case "$1" in
   remove) : > "$FLAG"; remove ;;
   status) status ;;
   list)   list ;;
+  apps)   apps ;;
+  check)  check "$2" ;;
   del)    del "$2" ;;
   *) echo "usage: $0 {apply|remove|status|list|del <name>}"; exit 1 ;;
 esac

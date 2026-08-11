@@ -88,6 +88,9 @@ After install, open the module's **WebUI** in the Manager. Three tabs:
   computed in-browser (MD5 + ASN.1), so **no `openssl` on the device is required**. Imported certs are
   saved to `/data/adb/apex_burp_ca_certs/` — **outside** the module — so they **survive module updates**.
   Bundled certs are tagged `bundled` (return on reflash); imported ones are tagged `imported`.
+- **Verify** — pick an installed app and check whether that **running** process actually sees your CA
+  in its own mount namespace. Answers the recurring question directly: trusts the CA but not
+  intercepting ⇒ certificate pinning; doesn't see it ⇒ started before injection (reopen/reboot).
 - **Log** — `certfix.log` viewer with auto-refresh and copy.
 
 > Rotating CAs (e.g. office vs. home Burp): **Import** the new one, **Delete** the old one — the trust
