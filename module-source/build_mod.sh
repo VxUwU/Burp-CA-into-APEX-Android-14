@@ -17,8 +17,13 @@ tr -d '\r' < "$HERE/inject.sh"       > "$STAGE/inject.sh"
 tr -d '\r' < "$HERE/uninstall.sh"    > "$STAGE/uninstall.sh"
 chmod 755 "$STAGE/post-fs-data.sh" "$STAGE/inject.sh" "$STAGE/uninstall.sh"
 tr -d '\r' < "$HERE/webroot/index.html" > "$STAGE/webroot/index.html"
-cp "$HERE"/certs/*.0 "$STAGE/certs/" 2>/dev/null
-chmod 644 "$STAGE"/certs/* 2>/dev/null || { echo "ERROR: no cert in certs/*.0"; exit 1; }
+cp "$HERE"/certs/*.0 "$STAGE/certs/" 2>/dev/null || true
+if ls "$STAGE"/certs/*.0 >/dev/null 2>&1; then
+  chmod 644 "$STAGE"/certs/*.0
+  echo "Bundled certs: $(ls "$STAGE"/certs/*.0 | xargs -n1 basename | tr '\n' ' ')"
+else
+  echo "NOTE: no certs/*.0 present — building a cert-less module (import your CA later via the WebUI)."
+fi
 
 # Zip contents at root (module.prop must be at zip root)
 ( cd "$STAGE" && rm -f "$ZIP" && zip -r "$ZIP" . >/dev/null )

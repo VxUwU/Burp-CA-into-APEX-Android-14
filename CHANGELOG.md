@@ -2,6 +2,19 @@
 
 All notable changes to this module. Dates are ISO (UTC).
 
+## [v1.9] — 2026-08-11
+### Fixed
+- **Uninstall now cleans every user profile.** `uninstall.sh` was hardcoded to user 0, leaving the
+  Chrome user-store CA behind in secondary users / work profiles (`/data/misc/user/10`, …) after
+  removal. It now loops over all `/data/misc/user/*`, matching the multi-user apply logic.
+- **No more mount stacking on re-apply.** `apply` now unmounts any previous APEX/legacy overlay
+  before re-mounting, so repeated Enable/Import/Delete no longer piles duplicate mounts in
+  `/proc/mounts` within a boot session. Only real mountpoints are unmounted (the untouched system
+  dir is never one).
+- **`build_mod.sh` no longer hard-fails without a bundled cert.** A `cp certs/*.0` with no match
+  tripped `set -e` and aborted the build, so a cert-less (import-via-WebUI) zip couldn't be built.
+  The copy is now non-fatal and the script reports whether any CA was bundled.
+
 ## [v1.8] — 2026-08-11
 ### Changed
 - **Glossier "Dopamine"-style WebUI.** Added a moving aurora background, thicker frosted glass

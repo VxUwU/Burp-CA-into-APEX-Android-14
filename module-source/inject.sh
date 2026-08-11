@@ -65,6 +65,13 @@ apply() {
   done
   echo "apex ready after ${i}x100ms, apex_count=$(ls $APEX 2>/dev/null | wc -l)" >> "$LOG"
 
+  # 1b. Clear any previous overlay so mounts don't stack on repeated apply.
+  #     Only unmounts real mountpoints (our tmpfs/bind); the untouched system dir isn't one.
+  n=0; while [ $n -lt 8 ] && grep -q " $APEX " /proc/mounts 2>/dev/null; do
+    umount $APEX 2>/dev/null || umount -l $APEX 2>/dev/null || break; n=$((n+1)); done
+  n=0; while [ $n -lt 8 ] && grep -q " $LEGACY " /proc/mounts 2>/dev/null; do
+    umount $LEGACY 2>/dev/null || umount -l $LEGACY 2>/dev/null || break; n=$((n+1)); done
+
   # 2. Snapshot current APEX system CAs
   TMP=/dev/.apex_ca_snap
   rm -rf $TMP; mkdir -p $TMP
