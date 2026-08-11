@@ -2,6 +2,15 @@
 
 All notable changes to this module. Dates are ISO (UTC).
 
+## [v1.6] — 2026-08-11
+### Fixed
+- **Multi-user / work-profile support for the Chrome (user-store) fix.** The CT-exempt user-store
+  install was hardcoded to owner user 0 (`/data/misc/user/0/cacerts-added`), so Chrome/Chromium run
+  inside a **work profile or secondary user** (`/data/misc/user/10`, `999`, …) didn't trust the Burp
+  CA. `inject.sh` now loops over **every** `/data/misc/user/*` on apply, remove, and delete, so all
+  profiles are covered. Regular apps were already fine (the APEX/system overlay is global). New
+  `install_user_stores` / `remove_user_cert` helpers; `status` reports `user_stores=` count.
+
 ## [v1.5] — 2026-08-11
 ### Fixed
 - **Accurate "Burp CA active in APEX" status in the WebUI.** The Control tab previously read

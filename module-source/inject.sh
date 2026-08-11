@@ -27,6 +27,33 @@ src_files() {
   done
 }
 
+# Install every managed cert into EVERY Android user's trust store
+# (owner user 0 + secondary users + work profile: /data/misc/user/10, 999, ...).
+# Chrome/Chromium enforce CT for SYSTEM roots; a USER-installed root is CT-exempt.
+install_user_stores() {
+  n=0
+  for udir in /data/misc/user/*; do
+    [ -d "$udir" ] || continue
+    us="$udir/cacerts-added"
+    mkdir -p "$us" 2>/dev/null || continue
+    src_files | while read -r c; do cp "$c" "$us/$(basename "$c")" 2>/dev/null; done
+    chown 0:0 "$us"/* 2>/dev/null
+    chmod 644 "$us"/* 2>/dev/null
+    restorecon -R "$us" 2>/dev/null || chcon u:object_r:system_data_file:s0 "$us"/* 2>/dev/null
+    n=$((n+1))
+  done
+  echo "$n"
+}
+
+# Remove one cert (by basename) from EVERY user's trust store.
+remove_user_cert() {
+  bn=$1
+  for udir in /data/misc/user/*; do
+    [ -d "$udir" ] || continue
+    rm -f "$udir/cacerts-added/$bn" 2>/dev/null
+  done
+}
+
 apply() {
   echo "=== $(date) apply ===" > "$LOG"
 
@@ -57,16 +84,12 @@ apply() {
   echo "apex after bind=$(ls $APEX | wc -l)" >> "$LOG"
   rm -rf $TMP
 
-  # 5. Install the CAs into the USER trust store (for Chrome & Chromium browsers).
+  # 5. Install the CAs into EVERY user's USER trust store (for Chrome & Chromium browsers).
   #    Chrome enforces Certificate Transparency for certs chaining to a SYSTEM root and
   #    rejects the Burp CA (ERR_CERTIFICATE_TRANSPARENCY_REQUIRED). A USER-installed root
-  #    is CT-exempt, so Chrome trusts it.
-  mkdir -p $USER_STORE 2>>"$LOG"
-  src_files | while read -r c; do cp "$c" "$USER_STORE/$(basename "$c")" 2>>"$LOG"; done
-  chown 0:0 $USER_STORE/* 2>/dev/null
-  chmod 644 $USER_STORE/* 2>/dev/null
-  restorecon -R $USER_STORE 2>/dev/null || chcon u:object_r:system_data_file:s0 $USER_STORE/* 2>/dev/null
-  echo "user store count=$(ls $USER_STORE 2>/dev/null | wc -l)" >> "$LOG"
+  #    is CT-exempt, so Chrome trusts it. Covers owner (user 0) + secondary/work profiles.
+  users=$(install_user_stores)
+  echo "user stores patched=$users (user0 count=$(ls $USER_STORE 2>/dev/null | wc -l))" >> "$LOG"
 
   echo "=== done ===" >> "$LOG"
 }
@@ -75,7 +98,7 @@ remove() {
   echo "=== $(date) remove ===" >> "$LOG"
   umount $APEX 2>/dev/null || umount -l $APEX 2>/dev/null
   umount $LEGACY 2>/dev/null || umount -l $LEGACY 2>/dev/null
-  src_files | while read -r c; do rm -f "$USER_STORE/$(basename "$c")" 2>/dev/null; done
+  src_files | while read -r c; do remove_user_cert "$(basename "$c")"; done
   echo "remove done" >> "$LOG"
 }
 
@@ -99,6 +122,7 @@ status() {
   fi
   echo "apex_count=$AC"
   echo "user_count=$(ls $USER_STORE 2>/dev/null | wc -l)"
+  echo "user_stores=$(ls -d /data/misc/user/*/cacerts-added 2>/dev/null | wc -l)"
   echo "burp_in_apex=$found"
 }
 
@@ -112,7 +136,8 @@ del() {
   [ -z "$name" ] && { echo "usage: del <name>"; exit 1; }
   # strip any path, keep basename only (safety)
   name=$(basename "$name")
-  rm -f "$MODDIR/certs/$name" "$EXTRA/$name" "$USER_STORE/$name" 2>/dev/null
+  rm -f "$MODDIR/certs/$name" "$EXTRA/$name" 2>/dev/null
+  remove_user_cert "$name"
   echo "=== $(date) del $name ===" >> "$LOG"
   # re-apply so the live APEX overlay reflects the removal (unless disabled)
   [ -f "$FLAG" ] || apply
