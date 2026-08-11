@@ -169,6 +169,14 @@
   .tab.active{ box-shadow:0 8px 22px rgba(16,201,138,.5), inset 0 1px 0 rgba(255,255,255,.5); }
   .chip.imported{ box-shadow:0 0 14px var(--ok-bg); }
   .fp{ text-shadow:0 0 10px rgba(16,201,138,.15); }
+
+  /* Pause continuous animations when the WebUI is backgrounded (saves GPU/battery). */
+  body.anim-off::before{ animation-play-state:paused }
+  body.anim-off button.enable::before{ animation-play-state:paused }
+  /* Respect the user's reduced-motion preference: no perpetual animation at all. */
+  @media (prefers-reduced-motion: reduce){
+    body::before, button.enable::before{ animation:none !important }
+  }
 </style>
 </head>
 <body>
@@ -616,6 +624,7 @@ document.getElementById("btnAppReload").onclick=loadApps;
 document.getElementById("btnLog2").onclick=loadLog;
 document.getElementById("btnCopy").onclick=copyLog;
 document.getElementById("auto").onchange=toggleAuto;
+document.addEventListener("visibilitychange",()=>document.body.classList.toggle("anim-off",document.hidden));
 
 refresh(); loadLog();
 </script>

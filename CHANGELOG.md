@@ -2,6 +2,13 @@
 
 All notable changes to this module. Dates are ISO (UTC).
 
+## [v2.3] — 2026-08-11
+### Changed
+- **WebUI battery/GPU optimization.** The perpetual aurora and button-shine animations now pause when
+  the WebUI is backgrounded (Page Visibility API → `animation-play-state: paused`), so they consume no
+  GPU while you're in another app, and are disabled entirely under `prefers-reduced-motion`. Purely a
+  performance/behavior tweak — the look is unchanged when the UI is in front.
+
 ## [v2.2] — 2026-08-11
 ### Added
 - **Known-MITM name flag (Certs tab).** Each cert card now shows a `Stealth` row that flags CAs
