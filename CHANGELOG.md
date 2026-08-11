@@ -2,6 +2,14 @@
 
 All notable changes to this module. Dates are ISO (UTC).
 
+## [v1.7] — 2026-08-11
+### Added
+- **CA validation on import (WebUI).** The Certs tab now parses X.509 **basicConstraints**
+  (OID 2.5.29.19) in-browser and warns when you paste a **leaf / non-CA** certificate
+  (`CA:FALSE` or the extension is absent) — the common mistake of exporting a site cert instead of
+  Burp's CA. The warning is force-able (tap **Import** again to add anyway). Each cert card also
+  shows a **Type: CA ✓ / leaf ⚠** row. New `certIsCA()` helper.
+
 ## [v1.6] — 2026-08-11
 ### Fixed
 - **Multi-user / work-profile support for the Chrome (user-store) fix.** The CT-exempt user-store

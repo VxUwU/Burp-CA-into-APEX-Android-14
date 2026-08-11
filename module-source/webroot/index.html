@@ -327,6 +327,26 @@ function subjectHashOld(subjectDer){
   const u=((h[0])|(h[1]<<8)|(h[2]<<16)|(h[3]<<24))>>>0;
   return ("00000000"+u.toString(16)).slice(-8);
 }
+/* Inspect X.509 basicConstraints (OID 2.5.29.19 -> 55 1D 13).
+   Returns {hasBC, isCA}. A trust anchor must be a CA; a leaf cert can't sign a MITM chain. */
+function certIsCA(der){
+  const cert=tlv(der,0), tbs=kids(der,cert)[0], tc=kids(der,tbs);
+  let ext=null; for(const n of tc){ if(n.tag===0xA3){ ext=n; break; } }   // [3] EXPLICIT extensions
+  if(!ext) return {hasBC:false,isCA:false};
+  const seq=kids(der,ext)[0]; if(!seq) return {hasBC:false,isCA:false};    // SEQUENCE OF Extension
+  for(const e of kids(der,seq)){
+    const parts=kids(der,e), oid=parts[0];
+    if(oid && oid.contentEnd-oid.contentStart===3 &&
+       der[oid.contentStart]===0x55 && der[oid.contentStart+1]===0x1D && der[oid.contentStart+2]===0x13){
+      const octet=parts[parts.length-1];               // extnValue OCTET STRING
+      const inner=tlv(der,octet.contentStart);          // wraps a SEQUENCE
+      let ca=false;
+      for(const c of kids(der,inner)){ if(c.tag===0x01){ ca=der[c.contentStart]!==0x00; } } // cA BOOLEAN
+      return {hasBC:true,isCA:ca};
+    }
+  }
+  return {hasBC:false,isCA:false};   // basicConstraints absent -> treat as non-CA
+}
 
 /* ---------- Control ---------- */
 function parseKV(text){ const o={}; text.trim().split("\n").forEach(l=>{const i=l.indexOf("="); if(i>0) o[l.slice(0,i).trim()]=l.slice(i+1).trim();}); return o; }
@@ -372,10 +392,13 @@ async function loadCerts(){
       const fp=sha256hex(der).replace(/(..)(?=.)/g,"$1:").toUpperCase();
       const days=Math.round((info.notAfter-new Date())/86400000);
       const exp=days<0?`expired ${-days}d ago`:`${days} days left`;
+      let ca; try{ ca=certIsCA(der); }catch(_){ ca={hasBC:false,isCA:false}; }
+      const type=ca.isCA?"CA ✓":"leaf ⚠ (not a CA)";
       body=
         `<div class="chead"><span class="cn">${esc(info.subjectCN)}</span>${chip}</div>`+
         `<div class="meta"><span>File</span><b>${esc(name)}</b></div>`+
         `<div class="meta"><span>Issuer</span><b>${esc(info.issuerCN)}</b></div>`+
+        `<div class="meta${ca.isCA?"":" warn"}"><span>Type</span><b>${type}</b></div>`+
         `<div class="meta${days<30?" warn":""}"><span>Expires</span><b>${info.notAfter.toISOString().slice(0,10)} · ${exp}</b></div>`+
         `<div class="fp">SHA-256<br>${fp}</div>`;
     }catch(e){
@@ -409,6 +432,22 @@ async function importCert(){
   let info,name;
   try{ info=parseCert(der); name=subjectHashOld(info.subjectDer)+".0"; }
   catch(e){ st.textContent="Could not parse the certificate: "+e; return; }
+
+  // Validate it's a CA. A leaf/end-entity cert can't anchor a MITM chain, so warn (force-able).
+  const btn=document.getElementById("btnImport");
+  let ca; try{ ca=certIsCA(der); }catch(e){ ca={hasBC:false,isCA:false}; }
+  if(!ca.isCA){
+    if(btn.dataset.armed!=="1"){
+      btn.dataset.armed="1";
+      const why=ca.hasBC?"its basicConstraints says <b>CA:FALSE</b>":"it has <b>no basicConstraints CA:TRUE</b>";
+      st.innerHTML=`⚠️ “${esc(info.subjectCN)}” looks like a <b>leaf / non-CA</b> certificate (${why}). `+
+                   `Apps won't trust a Burp MITM chain signed by it — you probably exported the wrong item `+
+                   `(export the <b>CA certificate</b>, not a site cert). Tap <b>Import</b> again to add it anyway.`;
+      setTimeout(()=>{ if(btn.isConnected) btn.dataset.armed="0"; },5000);
+      return;
+    }
+  }
+  btn.dataset.armed="0";
   st.textContent=`Parsed “${info.subjectCN}” → ${name}. Writing…`;
   const b64=bytesToB64(der), path=`${EXTRA}/${name}`;
   const r=await exec(`mkdir -p '${EXTRA}' && printf %s '${b64}' | base64 -d > '${path}' && chmod 644 '${path}' && sh ${INJECT} apply`);
