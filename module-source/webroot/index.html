@@ -269,6 +269,17 @@ function exec(cmd, options = {}) {
   });
 }
 function toast(m){ try{ if(typeof ksu!=="undefined"&&ksu.toast) ksu.toast(m); }catch(e){} }
+
+/* Known interception-tool CA name signatures. Anti-tamper apps often scan the trust
+   store for these substrings, so a CA named like this is a giveaway — prefer a CA with a
+   neutral subject. Edit this list to add/remove your own patterns (lowercase, matched as
+   a case-insensitive substring of the CN and issuer). */
+const MITM_NAMES=["portswigger","burp","charles","fiddler","mitmproxy","owasp","zap",
+  "http toolkit","httptoolkit","reqable","proxyman","brida"];
+function mitmNameHit(...names){
+  const hay=names.filter(Boolean).join(" ").toLowerCase();
+  return MITM_NAMES.find(s=>hay.includes(s))||null;
+}
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
 /* ---------- base64 <-> bytes ---------- */
@@ -465,13 +476,17 @@ async function loadCerts(){
       const exp=days<0?`expired ${-days}d ago`:`${days} days left`;
       let ca; try{ ca=certIsCA(der); }catch(_){ ca={hasBC:false,isCA:false}; }
       const type=ca.isCA?"CA ✓":"leaf ⚠ (not a CA)";
+      const hit=mitmNameHit(info.subjectCN,info.issuerCN);
+      const stealth=hit?`⚠ known-MITM name (“${esc(hit)}”)`:"neutral name ✓";
       body=
         `<div class="chead"><span class="cn">${esc(info.subjectCN)}</span>${chip}</div>`+
         `<div class="meta"><span>File</span><b>${esc(name)}</b></div>`+
         `<div class="meta"><span>Issuer</span><b>${esc(info.issuerCN)}</b></div>`+
         `<div class="meta${ca.isCA?"":" warn"}"><span>Type</span><b>${type}</b></div>`+
+        `<div class="meta${hit?" warn":""}"><span>Stealth</span><b>${stealth}</b></div>`+
         `<div class="meta${days<30?" warn":""}"><span>Expires</span><b>${info.notAfter.toISOString().slice(0,10)} · ${exp}</b></div>`+
-        `<div class="fp">SHA-256<br>${fp}</div>`;
+        `<div class="fp">SHA-256<br>${fp}</div>`+
+        (hit?`<p class="hint">Anti-tamper apps scan for this name in the trust store. For stealthy targets, use a Burp CA with a neutral subject (regenerate in Burp with a custom CN).</p>`:"");
     }catch(e){
       body=`<div class="chead"><span class="cn">${esc(name)}</span>${chip}</div>`+
            `<p class="hint">Could not parse this certificate (${esc(String(e))}).</p>`;

@@ -2,6 +2,14 @@
 
 All notable changes to this module. Dates are ISO (UTC).
 
+## [v2.2] — 2026-08-11
+### Added
+- **Known-MITM name flag (Certs tab).** Each cert card now shows a `Stealth` row that flags CAs
+  whose subject/issuer contains a known interception-tool signature (PortSwigger, Burp, Charles,
+  Fiddler, mitmproxy, ZAP, HTTP Toolkit, Reqable, Proxyman, …) — anti-tamper apps scan the trust
+  store for exactly these names, so a flagged CA is a giveaway on stealthy targets. The signature
+  list (`MITM_NAMES`) is a single editable array at the top of the WebUI script — add your own.
+
 ## [v2.1] — 2026-08-11
 ### Added
 - **Per-app trust verification (new "Verify" WebUI tab).** Pick any installed third-party app and
