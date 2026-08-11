@@ -89,6 +89,26 @@ apply() {
   # 4. Bind the populated legacy dir over the read-only APEX dir
   mount -o bind $LEGACY $APEX 2>>"$LOG"
   echo "apex after bind=$(ls $APEX | wc -l)" >> "$LOG"
+
+  # 4b. Self-test + one auto-retry. post-fs-data runs in the base namespace zygote
+  #     inherits, so a managed CA visible HERE strongly implies apps will inherit it.
+  #     If it's missing (bind rejected / APEX not ready / unsupported), retry once and log.
+  first=$(src_files | head -n1)
+  if [ -n "$first" ]; then
+    bn=$(basename "$first")
+    if ! ls "$APEX/$bn" >/dev/null 2>&1; then
+      echo "self-test: managed CA missing after bind — retrying once" >> "$LOG"
+      umount $APEX 2>/dev/null || umount -l $APEX 2>/dev/null
+      mount -o bind $LEGACY $APEX 2>>"$LOG"
+    fi
+    if ls "$APEX/$bn" >/dev/null 2>&1; then
+      echo "self-test: PASS (managed CA present in APEX overlay)" >> "$LOG"
+    else
+      echo "self-test: FAIL (managed CA NOT in APEX — mount may be unsupported on this device)" >> "$LOG"
+    fi
+  else
+    echo "self-test: SKIP (no bundled/imported CA yet)" >> "$LOG"
+  fi
   rm -rf $TMP
 
   # 5. Install the CAs into EVERY user's USER trust store (for Chrome & Chromium browsers).

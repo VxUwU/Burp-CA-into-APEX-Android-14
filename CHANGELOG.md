@@ -2,6 +2,15 @@
 
 All notable changes to this module. Dates are ISO (UTC).
 
+## [v2.0] — 2026-08-11
+### Added
+- **Boot self-test + one auto-retry.** After binding the overlay, `apply` verifies a managed CA is
+  actually present in the APEX store from the base namespace (which zygote inherits). If it's
+  missing — bind rejected, APEX not ready, or the technique is unsupported on that device — it
+  unmounts and retries the bind once, then logs `self-test: PASS` / `FAIL` (or `SKIP` when no CA is
+  loaded yet). Makes a silent failure on unfamiliar devices visible in `certfix.log` instead of
+  leaving the user guessing.
+
 ## [v1.9] — 2026-08-11
 ### Fixed
 - **Uninstall now cleans every user profile.** `uninstall.sh` was hardcoded to user 0, leaving the
