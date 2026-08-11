@@ -104,10 +104,35 @@ ones you install months from now — inherits it automatically on launch. Zero m
 |---|---|
 | Only some sites work, most "no internet" | **Intercept is ON** in Burp → turn it OFF; use HTTP history. |
 | `net::ERR_CERT_AUTHORITY_INVALID` in a browser | CA not trusted → check `certfix.log`; confirm cert is in `certs/<hash>.0` and you rebooted. |
+| `net::ERR_CERTIFICATE_TRANSPARENCY_REQUIRED` in Chrome | Chrome demands CT for system roots. Fixed in v1.1 (CA also added to the user store). Confirm `user store count=` in `certfix.log`. |
+| Chrome still fails after reboot | Check `certfix.log` shows `user store count>=1`; if 0, `/data/misc/user/0/cacerts-added` wasn't writable — reboot once more or re-enable the module. |
+| Firefox shows cert error but other apps are fine | Firefox uses its own store. Set `security.enterprise_roots.enabled=true` in `about:config` (see Browsers section). |
 | `certfix.log` missing after reboot | Module not active → confirm it's enabled in SukiSU, and that you rebooted **after** install. |
 | App shows connection error but Burp sees nothing | Likely **certificate pinning** (banking / e-wallet). Needs Frida/objection unpinning — see below. |
 | Boot fine but no interception | Proxy not set / Burp listener not bound to a reachable IP. Re-set proxy (tether IPs change). |
 | Script "works" via `su` but no effect | Use `su -mm` (mount-master / global namespace) for manual mounts. |
+
+## Browsers (Chrome & Firefox) — they use their own trust logic
+
+Most apps read the Android **system trust store**, which this module patches — so they just work.
+Browsers are special:
+
+**Chrome / Chromium (Brave, Edge, etc.) — handled automatically (v1.1+).**
+Chrome enforces **Certificate Transparency** on any cert chaining to a **system** root, so a
+system-only Burp CA is rejected with `net::ERR_CERTIFICATE_TRANSPARENCY_REQUIRED`. Chrome
+**exempts user-installed roots** from that check. The module therefore also drops your CA into
+the **user** trust store (`/data/misc/user/0/cacerts-added`) at boot, so Chrome trusts it. Nothing
+to do — just reboot after installing v1.1. Verify in `certfix.log`: `user store count=<N>`.
+
+**Firefox — one-time manual toggle (can't be automated safely).**
+Firefox ignores the OS trust store and uses its **own** (NSS) store. On the phone:
+1. Open Firefox → type `about:config` in the address bar → **Accept**.
+2. Search `security.enterprise_roots.enabled` → tap to set it **true**.
+3. Restart Firefox. It now also reads Android's trust store and picks up your Burp CA.
+
+> The module can't set this for you: Firefox rewrites its prefs on exit and the package name
+> differs across builds (`org.mozilla.firefox` / `.fenix` / `_beta`), so editing it externally
+> risks corrupting the profile. It's a 15-second one-time step.
 
 ## About certificate pinning
 

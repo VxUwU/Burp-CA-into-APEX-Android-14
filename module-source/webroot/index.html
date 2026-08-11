@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Burp CA into APEX</title>
+<style>
+  :root{
+    --fg:#0e211a; --muted:#4c6b5f;
+    --glass:rgba(232,255,246,.42); --glass-brd:rgba(255,255,255,.65);
+    --glass-2:rgba(255,255,255,.34); --sheen:rgba(255,255,255,.55);
+    --shadow:0 10px 34px rgba(6,78,59,.18);
+    --accent:#10c98a; --accent-2:#0aa7c2; --accent-fg:#04231a;
+    --ok:#0e9c63; --ok-bg:rgba(24,200,140,.18);
+    --off:#c62f45; --off-bg:rgba(230,70,95,.14);
+    --danger:#d64560;
+    --line:rgba(9,60,45,.11);
+    --bg1:#d6ffee; --bg2:#c7f7ec; --bg3:#defff4;
+    --logbg:rgba(6,26,20,.82); --logfg:#c6f2df;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --fg:#e6fff5; --muted:#8fb8a8;
+      --glass:rgba(14,40,32,.46); --glass-brd:rgba(120,255,210,.16);
+      --glass-2:rgba(120,255,210,.06); --sheen:rgba(140,255,220,.14);
+      --shadow:0 12px 38px rgba(0,0,0,.55);
+      --accent:#25e6a4; --accent-2:#22c9d6; --accent-fg:#032019;
+      --ok:#3fe6a4; --ok-bg:rgba(40,220,150,.15);
+      --off:#ff8298; --off-bg:rgba(255,90,120,.14);
+      --danger:#ff7a92;
+      --line:rgba(140,255,210,.1);
+      --bg1:#06140f; --bg2:#08201a; --bg3:#04231f;
+      --logbg:rgba(2,10,8,.72); --logfg:#c6f2df;
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{min-height:100%}
+  body{margin:0;color:var(--fg);
+       font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+       padding:18px 16px 34px;-webkit-tap-highlight-color:transparent;
+       background:
+         radial-gradient(120% 90% at 8% -8%, var(--bg1) 0%, transparent 55%),
+         radial-gradient(120% 90% at 100% 0%, var(--bg2) 0%, transparent 52%),
+         radial-gradient(140% 120% at 50% 120%, var(--bg3) 0%, transparent 60%),
+         var(--bg1);
+       background-attachment:fixed}
+  h1{font-size:20px;margin:2px 0 2px;letter-spacing:-.3px}
+  .sub{color:var(--muted);font-size:12.5px;margin:0 0 18px}
+  .glass{position:relative;
+         background:linear-gradient(135deg,var(--sheen),transparent 42%),var(--glass);
+         border:1px solid var(--glass-brd);border-radius:18px;
+         box-shadow:var(--shadow),inset 0 1px 0 var(--sheen);
+         -webkit-backdrop-filter:blur(20px) saturate(180%);
+         backdrop-filter:blur(20px) saturate(180%)}
+  .glass::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+         background:linear-gradient(180deg,rgba(255,255,255,.18),transparent 30%);
+         -webkit-mask:linear-gradient(#000,transparent 45%);mask:linear-gradient(#000,transparent 45%)}
+  .card{padding:16px;margin-bottom:14px}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-weight:700;font-size:12.5px;
+        padding:6px 13px;border-radius:999px;border:1px solid var(--glass-brd);
+        -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+  .pill.on{color:var(--ok);background:var(--ok-bg)}
+  .pill.off{color:var(--off);background:var(--off-bg)}
+  .pill .dot{width:8px;height:8px;border-radius:50%;background:currentColor;
+             box-shadow:0 0 8px currentColor}
+  .row{display:flex;justify-content:space-between;align-items:center;
+       padding:11px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .row:last-child{border-bottom:none}
+  .row .k{color:var(--muted)}
+  .row .v{font-variant-numeric:tabular-nums;font-weight:700}
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:2px}
+  button{font-size:14px;font-weight:700;padding:13px;border-radius:13px;
+         border:1px solid var(--glass-brd);background:var(--glass-2);color:var(--fg);
+         cursor:pointer;transition:transform .12s,opacity .15s,box-shadow .15s;
+         -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+  button:active{transform:scale(.97);opacity:.85}
+  button:disabled{opacity:.4}
+  button.enable{background:linear-gradient(135deg,var(--accent),var(--accent-2));
+                color:var(--accent-fg);border-color:transparent;
+                box-shadow:0 6px 20px rgba(16,201,138,.45),inset 0 1px 0 rgba(255,255,255,.4)}
+  button.wide{grid-column:1 / -1}
+  button.sm{padding:8px 14px;font-size:12.5px}
+  button.del{padding:8px 14px;font-size:12.5px;color:var(--danger);
+             border-color:color-mix(in srgb,var(--danger) 40%,transparent)}
+  pre{background:var(--logbg);color:var(--logfg);font-size:12px;line-height:1.55;
+      padding:14px;border-radius:14px;overflow:auto;max-height:46vh;margin:0;
+      white-space:pre-wrap;word-break:break-word;border:1px solid var(--glass-brd)}
+  .hint{color:var(--muted);font-size:12px;margin:12px 0 0;line-height:1.55}
+  .head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px}
+  .tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:6px;margin-bottom:14px}
+  .tab{padding:11px 6px;text-align:center;font-size:14px;font-weight:700;border-radius:12px;
+       color:var(--muted);cursor:pointer;transition:.18s}
+  .tab.active{background:linear-gradient(135deg,var(--accent),var(--accent-2));
+              color:var(--accent-fg);box-shadow:0 6px 16px rgba(16,201,138,.4)}
+  .pane{display:none}
+  .pane.active{display:block;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .sec{font-size:13px;font-weight:700;color:var(--muted);margin:0 0 10px;text-transform:uppercase;letter-spacing:.4px}
+  .chead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:9px}
+  .cn{font-size:15px;font-weight:700}
+  .chip{font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+        padding:3px 9px;border-radius:999px;border:1px solid var(--glass-brd);white-space:nowrap}
+  .chip.bundled{color:var(--muted)}
+  .chip.imported{color:var(--ok);background:var(--ok-bg)}
+  .cfoot{margin-top:12px;display:flex;justify-content:flex-end}
+  .meta{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;color:var(--muted)}
+  .meta b{color:var(--fg);font-weight:600;text-align:right;margin-left:12px;word-break:break-all}
+  .meta.warn b{color:var(--off)}
+  .fp{margin-top:9px;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+      color:var(--muted);word-break:break-all;line-height:1.55}
+  textarea{width:100%;min-height:120px;border-radius:12px;border:1px solid var(--glass-brd);
+      background:var(--glass-2);color:var(--fg);padding:12px;margin-bottom:10px;
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;resize:vertical}
+  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+  .switch{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);font-weight:600}
+  .switch input{width:16px;height:16px;accent-color:var(--accent)}
+</style>
+</head>
+<body>
+  <div class="head">
+    <div>
+      <h1>Burp CA into APEX</h1>
+      <p class="sub">Android 14+ Conscrypt trust-store injector</p>
+    </div>
+    <span id="pill" class="pill off"><span class="dot"></span><span id="pillText">…</span></span>
+  </div>
+
+  <div class="tabs glass">
+    <div class="tab active" data-pane="control">Control</div>
+    <div class="tab" data-pane="certs">Certs</div>
+    <div class="tab" data-pane="log">Log</div>
+  </div>
+
+  <!-- CONTROL -->
+  <div class="pane active" id="pane-control">
+    <div class="card glass">
+      <div class="row"><span class="k">Injection state</span><span class="v" id="s_state">—</span></div>
+      <div class="row"><span class="k">APEX store (all apps)</span><span class="v" id="s_apex">—</span></div>
+      <div class="row"><span class="k">User store (Chrome)</span><span class="v" id="s_user">—</span></div>
+      <div class="row"><span class="k">Burp CA active in APEX</span><span class="v" id="s_burp">—</span></div>
+    </div>
+    <div class="card glass">
+      <div class="btns">
+        <button class="enable" id="btnEnable">Enable</button>
+        <button id="btnDisable">Disable</button>
+        <button class="wide" id="btnRefresh">Refresh status</button>
+      </div>
+      <p class="hint">Enable/Disable sets a persistent flag the boot script honors and applies a
+        best-effort live change. <b>Reboot</b> for a guaranteed effect on all running apps.
+        Firefox needs a one-time <code>about:config → security.enterprise_roots.enabled = true</code>.</p>
+    </div>
+  </div>
+
+  <!-- CERTS -->
+  <div class="pane" id="pane-certs">
+    <p class="sec">Loaded CA certificates</p>
+    <div id="certList"><p class="hint">Loading…</p></div>
+
+    <p class="sec" style="margin-top:20px">Import a CA</p>
+    <div class="card glass">
+      <textarea id="imp" placeholder="Paste a certificate here — PEM (-----BEGIN CERTIFICATE-----) or base64 DER. Burp: Proxy → Proxy settings → Export → Certificate in DER/PEM."></textarea>
+      <div class="btns">
+        <button class="enable wide" id="btnImport">Import &amp; apply</button>
+      </div>
+      <p class="hint" id="impStatus">Computes the Android <code>subject_hash_old</code> name in-browser (no openssl needed), saves it to an update-proof folder outside the module, and re-applies both trust stores.</p>
+    </div>
+  </div>
+
+  <!-- LOG -->
+  <div class="pane" id="pane-log">
+    <div class="card glass">
+      <div class="toolbar">
+        <b style="font-size:14px;flex:1">certfix.log</b>
+        <label class="switch"><input type="checkbox" id="auto">Auto</label>
+        <button class="sm" id="btnCopy">Copy</button>
+        <button class="sm" id="btnLog2">Reload</button>
+      </div>
+      <pre id="log">Loading…</pre>
+    </div>
+  </div>
+
+<script>
+const MODDIR = "/data/adb/modules/apex_burp_ca";
+const INJECT = MODDIR + "/inject.sh";
+const EXTRA  = "/data/adb/apex_burp_ca_certs";   // imported certs (survive module updates)
+
+/* ---------- KSU WebUI bridge ---------- */
+function exec(cmd, options = {}) {
+  return new Promise((resolve) => {
+    if (typeof ksu === "undefined" || !ksu.exec) {
+      resolve({ errno: -1, stdout: "", stderr: "Not running inside KSU WebUI (ksu bridge missing)." });
+      return;
+    }
+    const cb = "cb_" + Date.now() + "_" + Math.floor(Math.random() * 1e6);
+    window[cb] = (errno, stdout, stderr) => { delete window[cb]; resolve({ errno, stdout, stderr }); };
+    try { ksu.exec(cmd, JSON.stringify(options), cb); }
+    catch (e) { delete window[cb]; resolve({ errno: -1, stdout: "", stderr: String(e) }); }
+  });
+}
+function toast(m){ try{ if(typeof ksu!=="undefined"&&ksu.toast) ksu.toast(m); }catch(e){} }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+/* ---------- base64 <-> bytes ---------- */
+function b64ToBytes(b64){
+  const clean=(b64||"").replace(/[^A-Za-z0-9+/=]/g,"");
+  const bin=atob(clean); const a=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) a[i]=bin.charCodeAt(i);
+  return a;
+}
+function bytesToB64(a){ let s=""; for(let i=0;i<a.length;i++) s+=String.fromCharCode(a[i]); return btoa(s); }
+function pemToDer(text){
+  const m=(text||"").match(/-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/);
+  if(m) return b64ToBytes(m[1]);
+  const cleaned=(text||"").replace(/[^A-Za-z0-9+/=]/g,"");
+  return cleaned.length>60 ? b64ToBytes(cleaned) : null;
+}
+
+/* ---------- MD5 (bytes -> 16 bytes) for subject_hash_old ---------- */
+function md5bytes(bytes){
+  const rl=(x,c)=>(x<<c)|(x>>>(32-c)), add=(a,b)=>(a+b)|0;
+  const s=[7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,
+           4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];
+  const K=[]; for(let i=0;i<64;i++) K[i]=(Math.floor(Math.abs(Math.sin(i+1))*4294967296))|0;
+  const ml=bytes.length; let total=ml+1; while(total%64!==56) total++;
+  const buf=new Uint8Array(total+8); buf.set(bytes,0); buf[ml]=0x80;
+  const bits=ml*8, hi=Math.floor(bits/4294967296);
+  buf[total]=bits&255;buf[total+1]=(bits>>>8)&255;buf[total+2]=(bits>>>16)&255;buf[total+3]=(bits>>>24)&255;
+  buf[total+4]=hi&255;buf[total+5]=(hi>>>8)&255;buf[total+6]=(hi>>>16)&255;buf[total+7]=(hi>>>24)&255;
+  let a0=0x67452301,b0=0xefcdab89,c0=0x98badcfe,d0=0x10325476; const M=new Int32Array(16);
+  for(let off=0;off<buf.length;off+=64){
+    for(let i=0;i<16;i++) M[i]=buf[off+i*4]|(buf[off+i*4+1]<<8)|(buf[off+i*4+2]<<16)|(buf[off+i*4+3]<<24);
+    let A=a0,B=b0,C=c0,D=d0;
+    for(let i=0;i<64;i++){
+      let F,g;
+      if(i<16){F=(B&C)|(~B&D);g=i;}
+      else if(i<32){F=(D&B)|(~D&C);g=(5*i+1)&15;}
+      else if(i<48){F=B^C^D;g=(3*i+5)&15;}
+      else{F=C^(B|~D);g=(7*i)&15;}
+      F=add(add(add(F,A),K[i]),M[g]); A=D;D=C;C=B;B=add(B,rl(F,s[i]));
+    }
+    a0=add(a0,A);b0=add(b0,B);c0=add(c0,C);d0=add(d0,D);
+  }
+  const out=new Uint8Array(16);
+  [a0,b0,c0,d0].forEach((v,i)=>{out[i*4]=v&255;out[i*4+1]=(v>>>8)&255;out[i*4+2]=(v>>>16)&255;out[i*4+3]=(v>>>24)&255;});
+  return out;
+}
+
+/* ---------- SHA-256 (bytes -> hex) for fingerprint ---------- */
+function sha256hex(bytes){
+  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  const h=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const rr=(x,n)=>(x>>>n)|(x<<(32-n));
+  const ml=bytes.length; let total=ml+1; while(total%64!==56) total++;
+  const buf=new Uint8Array(total+8); buf.set(bytes,0); buf[ml]=0x80;
+  const bits=ml*8, hi=Math.floor(bits/4294967296);
+  buf[total]=(hi>>>24)&255;buf[total+1]=(hi>>>16)&255;buf[total+2]=(hi>>>8)&255;buf[total+3]=hi&255;
+  buf[total+4]=(bits>>>24)&255;buf[total+5]=(bits>>>16)&255;buf[total+6]=(bits>>>8)&255;buf[total+7]=bits&255;
+  const w=new Int32Array(64);
+  for(let off=0;off<buf.length;off+=64){
+    for(let i=0;i<16;i++) w[i]=(buf[off+i*4]<<24)|(buf[off+i*4+1]<<16)|(buf[off+i*4+2]<<8)|buf[off+i*4+3];
+    for(let i=16;i<64;i++){
+      const s0=rr(w[i-15],7)^rr(w[i-15],18)^(w[i-15]>>>3);
+      const s1=rr(w[i-2],17)^rr(w[i-2],19)^(w[i-2]>>>10);
+      w[i]=(w[i-16]+s0+w[i-7]+s1)|0;
+    }
+    let a=h[0],b=h[1],c=h[2],d=h[3],e=h[4],f=h[5],g=h[6],hh=h[7];
+    for(let i=0;i<64;i++){
+      const S1=rr(e,6)^rr(e,11)^rr(e,25), ch=(e&f)^(~e&g);
+      const t1=(hh+S1+ch+K[i]+w[i])|0;
+      const S0=rr(a,2)^rr(a,13)^rr(a,22), maj=(a&b)^(a&c)^(b&c);
+      const t2=(S0+maj)|0;
+      hh=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0;
+    }
+    h[0]=(h[0]+a)|0;h[1]=(h[1]+b)|0;h[2]=(h[2]+c)|0;h[3]=(h[3]+d)|0;
+    h[4]=(h[4]+e)|0;h[5]=(h[5]+f)|0;h[6]=(h[6]+g)|0;h[7]=(h[7]+hh)|0;
+  }
+  return h.map(x=>("00000000"+(x>>>0).toString(16)).slice(-8)).join("");
+}
+
+/* ---------- minimal ASN.1 / X.509 ---------- */
+function tlv(buf,off){
+  const tag=buf[off]; let p=off+1; let len=buf[p++];
+  if(len&0x80){ const n=len&0x7f; len=0; for(let i=0;i<n;i++) len=(len<<8)|buf[p++]; }
+  return {tag,fullStart:off,contentStart:p,contentEnd:p+len,end:p+len};
+}
+function kids(buf,node){ const out=[]; let p=node.contentStart; while(p<node.contentEnd){ const c=tlv(buf,p); out.push(c); p=c.end; } return out; }
+function nameCN(buf,name){
+  for(const rdn of kids(buf,name)) for(const atv of kids(buf,rdn)){
+    const parts=kids(buf,atv), oid=parts[0], val=parts[1];
+    if(oid.contentEnd-oid.contentStart===3 && buf[oid.contentStart]===0x55 && buf[oid.contentStart+1]===0x04 && buf[oid.contentStart+2]===0x03){
+      let s=""; for(let p=val.contentStart;p<val.contentEnd;p++) s+=String.fromCharCode(buf[p]);
+      try{ s=decodeURIComponent(escape(s)); }catch(e){}
+      return s;
+    }
+  }
+  return "(no CN)";
+}
+function parseTime(buf,node){
+  let s=""; for(let p=node.contentStart;p<node.contentEnd;p++) s+=String.fromCharCode(buf[p]);
+  let y,mo,d,h,mi,se;
+  if(node.tag===0x17){ y=+s.slice(0,2); y+=(y>=50?1900:2000); mo=+s.slice(2,4);d=+s.slice(4,6);h=+s.slice(6,8);mi=+s.slice(8,10);se=+s.slice(10,12)||0; }
+  else { y=+s.slice(0,4);mo=+s.slice(4,6);d=+s.slice(6,8);h=+s.slice(8,10);mi=+s.slice(10,12);se=+s.slice(12,14)||0; }
+  return new Date(Date.UTC(y,mo-1,d,h,mi,se));
+}
+function parseCert(der){
+  const cert=tlv(der,0), top=kids(der,cert), tbs=top[0], tc=kids(der,tbs);
+  let i=(tc[0].tag===0xA0)?1:0;
+  const issuer=tc[i+2], validity=tc[i+3], subject=tc[i+4];
+  const vt=kids(der,validity);
+  return {
+    subjectDer:der.slice(subject.fullStart,subject.end),
+    subjectCN:nameCN(der,subject),
+    issuerCN:nameCN(der,issuer),
+    notBefore:parseTime(der,vt[0]),
+    notAfter:parseTime(der,vt[1])
+  };
+}
+function subjectHashOld(subjectDer){
+  const h=md5bytes(subjectDer);
+  const u=((h[0])|(h[1]<<8)|(h[2]<<16)|(h[3]<<24))>>>0;
+  return ("00000000"+u.toString(16)).slice(-8);
+}
+
+/* ---------- Control ---------- */
+function parseKV(text){ const o={}; text.trim().split("\n").forEach(l=>{const i=l.indexOf("="); if(i>0) o[l.slice(0,i).trim()]=l.slice(i+1).trim();}); return o; }
+async function refresh(){
+  const r=await exec(`sh ${INJECT} status`);
+  if(r.errno!==0){ document.getElementById("s_state").textContent="unavailable"; toast(r.stderr||"status failed"); return; }
+  const kv=parseKV(r.stdout), enabled=kv.state==="enabled";
+  document.getElementById("s_state").textContent=kv.state||"—";
+  document.getElementById("s_apex").textContent=(kv.apex_count??"—")+" certs";
+  document.getElementById("s_user").textContent=(kv.user_count??"—")+" certs";
+  document.getElementById("s_burp").textContent=kv.burp_in_apex==="yes"?"yes ✓":"no";
+  const pill=document.getElementById("pill");
+  pill.className="pill "+(enabled?"on":"off");
+  document.getElementById("pillText").textContent=enabled?"Enabled":"Disabled";
+  document.getElementById("btnEnable").disabled=enabled;
+  document.getElementById("btnDisable").disabled=!enabled;
+}
+async function act(mode){
+  document.getElementById("btnEnable").disabled=true; document.getElementById("btnDisable").disabled=true;
+  toast(mode==="apply"?"Enabling…":"Disabling…");
+  const r=await exec(`sh ${INJECT} ${mode}`);
+  toast(r.errno===0?"Done — reboot for full effect":("Failed: "+(r.stderr||r.errno)));
+  await refresh(); await loadLog();
+}
+
+/* ---------- Certs ---------- */
+async function loadCerts(){
+  const box=document.getElementById("certList");
+  box.innerHTML='<p class="hint">Loading…</p>';
+  const r=await exec(`sh ${INJECT} list`);
+  const rows=(r.stdout||"").split("\n").map(s=>s.trim()).filter(Boolean)
+              .map(l=>{ const i=l.indexOf("|"); return {src:l.slice(0,i), name:l.slice(i+1)}; });
+  if(!rows.length){ box.innerHTML='<p class="hint">No certs found.</p>'; return; }
+  box.innerHTML="";
+  for(const {src,name} of rows){
+    const dir = src==="imported" ? EXTRA : MODDIR+"/certs";
+    const rc=await exec(`base64 ${dir}/${name}`);
+    const card=document.createElement("div"); card.className="card glass";
+    const chip=`<span class="chip ${src}">${src}</span>`;
+    let body;
+    try{
+      const der=b64ToBytes(rc.stdout), info=parseCert(der);
+      const fp=sha256hex(der).replace(/(..)(?=.)/g,"$1:").toUpperCase();
+      const days=Math.round((info.notAfter-new Date())/86400000);
+      const exp=days<0?`expired ${-days}d ago`:`${days} days left`;
+      body=
+        `<div class="chead"><span class="cn">${esc(info.subjectCN)}</span>${chip}</div>`+
+        `<div class="meta"><span>File</span><b>${esc(name)}</b></div>`+
+        `<div class="meta"><span>Issuer</span><b>${esc(info.issuerCN)}</b></div>`+
+        `<div class="meta${days<30?" warn":""}"><span>Expires</span><b>${info.notAfter.toISOString().slice(0,10)} · ${exp}</b></div>`+
+        `<div class="fp">SHA-256<br>${fp}</div>`;
+    }catch(e){
+      body=`<div class="chead"><span class="cn">${esc(name)}</span>${chip}</div>`+
+           `<p class="hint">Could not parse this certificate (${esc(String(e))}).</p>`;
+    }
+    const foot=`<div class="cfoot"><button class="del" data-name="${esc(name)}" data-src="${src}">Delete</button></div>`;
+    card.innerHTML=body+foot;
+    box.appendChild(card);
+  }
+  // Two-tap confirm (KSU WebViews may not implement window.confirm)
+  box.querySelectorAll("button.del").forEach(b=>{
+    b.onclick=()=>{
+      if(b.dataset.armed==="1"){ deleteCert(b.dataset.name,b.dataset.src); return; }
+      b.dataset.armed="1";
+      b.textContent = b.dataset.src==="bundled" ? "Tap again (returns on reflash)" : "Tap again to delete";
+      setTimeout(()=>{ if(b.isConnected){ b.dataset.armed="0"; b.textContent="Delete"; } },3000);
+    };
+  });
+}
+async function deleteCert(name,src){
+  toast("Deleting…");
+  const r=await exec(`sh ${INJECT} del '${name}'`);
+  toast(r.errno===0?"Deleted — reboot for full effect":("Failed: "+(r.stderr||r.errno)));
+  loadCerts(); refresh(); loadLog();
+}
+async function importCert(){
+  const st=document.getElementById("impStatus");
+  const der=pemToDer(document.getElementById("imp").value);
+  if(!der||der.length<60){ st.textContent="No valid certificate found in the input."; return; }
+  let info,name;
+  try{ info=parseCert(der); name=subjectHashOld(info.subjectDer)+".0"; }
+  catch(e){ st.textContent="Could not parse the certificate: "+e; return; }
+  st.textContent=`Parsed “${info.subjectCN}” → ${name}. Writing…`;
+  const b64=bytesToB64(der), path=`${EXTRA}/${name}`;
+  const r=await exec(`mkdir -p '${EXTRA}' && printf %s '${b64}' | base64 -d > '${path}' && chmod 644 '${path}' && sh ${INJECT} apply`);
+  if(r.errno===0){
+    st.textContent=`Imported ${name} (“${info.subjectCN}”) and re-applied. Reboot for full effect.`;
+    toast("CA imported"); document.getElementById("imp").value="";
+    loadCerts(); refresh();
+  } else { st.textContent="Write failed: "+(r.stderr||r.errno); }
+}
+
+/* ---------- Log ---------- */
+let autoTimer=null;
+async function loadLog(){
+  const r=await exec(`cat ${MODDIR}/certfix.log`);
+  document.getElementById("log").textContent=(r.stdout&&r.stdout.trim())?r.stdout:"(log empty — reboot or press Enable)";
+}
+async function copyLog(){
+  const t=document.getElementById("log").textContent;
+  try{ await navigator.clipboard.writeText(t); toast("Log copied"); return; }catch(e){}
+  const ta=document.createElement("textarea"); ta.value=t; document.body.appendChild(ta); ta.select();
+  try{ document.execCommand("copy"); toast("Log copied"); }catch(_){ toast("Copy not supported"); }
+  ta.remove();
+}
+function toggleAuto(){
+  if(document.getElementById("auto").checked){ if(!autoTimer) autoTimer=setInterval(loadLog,3000); }
+  else if(autoTimer){ clearInterval(autoTimer); autoTimer=null; }
+}
+
+/* ---------- tabs + wiring ---------- */
+function showTab(name){
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.pane===name));
+  document.querySelectorAll(".pane").forEach(p=>p.classList.toggle("active",p.id==="pane-"+name));
+  if(name==="log") loadLog();
+  if(name==="certs") loadCerts();
+}
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>showTab(t.dataset.pane));
+document.getElementById("btnEnable").onclick=()=>act("apply");
+document.getElementById("btnDisable").onclick=()=>act("remove");
+document.getElementById("btnRefresh").onclick=refresh;
+document.getElementById("btnImport").onclick=importCert;
+document.getElementById("btnLog2").onclick=loadLog;
+document.getElementById("btnCopy").onclick=copyLog;
+document.getElementById("auto").onchange=toggleAuto;
+
+refresh(); loadLog();
+</script>
+</body>
+</html>

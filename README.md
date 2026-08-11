@@ -31,7 +31,10 @@ Full technical writeup: [`docs/Android14+_APEX_Conscrypt_CA_Injection.md`](docs/
 ├── .gitignore
 ├── module-source/            # editable module source
 │   ├── module.prop
-│   ├── post-fs-data.sh        # runs pre-zygote, does the injection
+│   ├── post-fs-data.sh        # runs pre-zygote; honors the WebUI flag, calls inject.sh
+│   ├── inject.sh              # shared apply/remove/status/list/del logic (boot + WebUI + uninstall)
+│   ├── uninstall.sh           # removes user-store certs + the external imported-cert dir on removal
+│   ├── webroot/index.html     # KSU WebUI: Control / Certs (view·import·delete) / Log
 │   ├── build_mod.sh           # rebuilds the flashable zip (WSL/Linux)
 │   └── certs/<hash>.0         # your CA (DER), named by subject hash
 ├── scripts/
@@ -74,10 +77,32 @@ Or check any freshly-started app's namespace sees your CA in `/apex/com.android.
 
 SukiSU Manager → disable/remove module → **reboot**. Fully reverts (tmpfs/bind live only in RAM). Cannot bootloop: if the script fails, boot continues without the CA.
 
+## WebUI (SukiSU Ultra / KernelSU)
+
+After install, open the module's **WebUI** in the Manager. Three tabs:
+- **Control** — live status + **Enable / Disable** injection without uninstalling. The toggle sets a
+  persistent flag the boot script honors and applies a best-effort live change — **reboot** for a
+  guaranteed effect on all apps.
+- **Certs** — view each loaded CA (subject, issuer, SHA-256 fingerprint, expiry), **import** a new CA
+  by pasting PEM/DER, and **delete** ones you no longer use. The Android `subject_hash_old` filename is
+  computed in-browser (MD5 + ASN.1), so **no `openssl` on the device is required**. Imported certs are
+  saved to `/data/adb/apex_burp_ca_certs/` — **outside** the module — so they **survive module updates**.
+  Bundled certs are tagged `bundled` (return on reflash); imported ones are tagged `imported`.
+- **Log** — `certfix.log` viewer with auto-refresh and copy.
+
+> Rotating CAs (e.g. office vs. home Burp): **Import** the new one, **Delete** the old one — the trust
+> store then holds only the CA you're actually using instead of accumulating stale MITM anchors.
+
+## Browsers
+
+- **Chrome / Chromium** — handled automatically (v1.1+). Chrome enforces Certificate Transparency for system roots, so the module also installs the CA into the **user** trust store (CT-exempt) so Chrome trusts Burp.
+- **Firefox** — uses its own CA store; needs a one-time toggle: `about:config` → `security.enterprise_roots.enabled = true`. See [Getting Started → Browsers](docs/GETTING_STARTED.md#browsers-chrome--firefox--they-use-their-own-trust-logic).
+
 ## Limitations
 
 - **Certificate pinning** apps (banking / e-wallet) reject even trusted system CAs → needs Frida/objection unpinning (out of scope).
 - Proxy still must be configured separately — the CA makes apps *trust* Burp, the proxy *routes* traffic to it.
+- The Chrome fix writes one file to `/data` (persistent). `uninstall.sh` removes it when you remove the module; the system/APEX part remains RAM-only and reverts on reboot.
 
 ## References
 
