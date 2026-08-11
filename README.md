@@ -31,18 +31,20 @@ Full technical writeup: [`docs/Android14+_APEX_Conscrypt_CA_Injection.md`](docs/
 ├── .gitignore
 ├── module-source/            # editable module source
 │   ├── module.prop
-│   ├── post-fs-data.sh        # runs pre-zygote; honors the WebUI flag, calls inject.sh
-│   ├── inject.sh              # shared apply/remove/status/list/del logic (boot + WebUI + uninstall)
-│   ├── uninstall.sh           # removes user-store certs + the external imported-cert dir on removal
-│   ├── webroot/index.html     # KSU WebUI: Control / Certs (view·import·delete) / Log
+│   ├── post-fs-data.sh        # runs pre-zygote; honors the WebUI flag, then execs inject.sh
+│   ├── inject.sh              # shared logic: apply/remove/status/list/apps/check/del
+│   ├── uninstall.sh           # removes user-store certs (all profiles) + the imported-cert dir
+│   ├── webroot/index.html     # KernelSU WebUI: Control / Certs / Verify / Log
 │   ├── build_mod.sh           # rebuilds the flashable zip (WSL/Linux)
-│   └── certs/<hash>.0         # your CA (DER), named by subject hash
+│   └── certs/<hash>.0         # optional bundled CA (DER), named by subject hash
 ├── scripts/
 │   └── inject_app_runtime.sh  # no-reboot per-app fallback injector
 ├── docs/
+│   ├── GETTING_STARTED.md
 │   └── Android14+_APEX_Conscrypt_CA_Injection.md
+├── CHANGELOG.md
 └── dist/
-    └── apex_burp_ca_module.zip  # built module (optional to commit)
+    └── apex_burp_ca_module.zip  # built module (git-ignored)
 ```
 
 ## Install
@@ -79,18 +81,22 @@ SukiSU Manager → disable/remove module → **reboot**. Fully reverts (tmpfs/bi
 
 ## WebUI (SukiSU Ultra / KernelSU)
 
-After install, open the module's **WebUI** in the Manager. Three tabs:
-- **Control** — live status + **Enable / Disable** injection without uninstalling. The toggle sets a
-  persistent flag the boot script honors and applies a best-effort live change — **reboot** for a
-  guaranteed effect on all apps.
-- **Certs** — view each loaded CA (subject, issuer, SHA-256 fingerprint, expiry), **import** a new CA
-  by pasting PEM/DER, and **delete** ones you no longer use. The Android `subject_hash_old` filename is
-  computed in-browser (MD5 + ASN.1), so **no `openssl` on the device is required**. Imported certs are
-  saved to `/data/adb/apex_burp_ca_certs/` — **outside** the module — so they **survive module updates**.
-  Bundled certs are tagged `bundled` (return on reflash); imported ones are tagged `imported`.
-- **Verify** — pick an installed app and check whether that **running** process actually sees your CA
-  in its own mount namespace. Answers the recurring question directly: trusts the CA but not
-  intercepting ⇒ certificate pinning; doesn't see it ⇒ started before injection (reopen/reboot).
+After install, open the module's **WebUI** from the Manager. It has four tabs:
+
+- **Control** — live status and **Enable / Disable** without uninstalling. The toggle writes a
+  persistent flag the boot script honors and applies a best-effort live change; **reboot** for a
+  guaranteed effect across all running apps.
+- **Certs** — inspect each loaded CA (subject, issuer, SHA-256 fingerprint, validity), **import** a
+  CA by pasting PEM/DER, and **delete** anchors you no longer use. Each card also reports whether the
+  certificate is a valid **CA** (basicConstraints) and flags a **known interception-tool name**
+  (PortSwigger, Charles, …) as a detection-surface warning. The Android `subject_hash_old` filename
+  is derived in-browser (MD5 + ASN.1), so **no `openssl` on the device is required**. Imported certs
+  are stored in `/data/adb/apex_burp_ca_certs/` — **outside** the module — so they **survive module
+  updates**; bundled certs are tagged `bundled`, imported ones `imported`.
+- **Verify** — select an installed app and confirm whether that **running** process actually sees the
+  CA in its own mount namespace. This resolves the recurring ambiguity directly: trusts the CA but
+  still not intercepting ⇒ certificate pinning; does not see it ⇒ the process started before
+  injection (reopen or reboot).
 - **Log** — `certfix.log` viewer with auto-refresh and copy.
 
 > Rotating CAs (e.g. office vs. home Burp): **Import** the new one, **Delete** the old one — the trust
