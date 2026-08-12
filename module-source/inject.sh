@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # Shared CA injection logic used by post-fs-data.sh (boot), the WebUI, and uninstall.sh.
 # Usage: inject.sh {apply|remove|status|list|apps|check <pkg>|del <name>}
-#   apply        -> clear disabled flag, mount system store + install user store (Chrome)
+#   apply        -> clear disabled flag, rebuild+mount system store + install user store (Chrome)
 #   remove       -> set disabled flag, unmount live + remove user-store certs
 #   status       -> print key=value lines for the WebUI
 #   list         -> print "source|name" for every managed cert (bundled + imported)
@@ -12,13 +12,25 @@
 # Certs come from TWO dirs:
 #   $MODDIR/certs   -> bundled in the zip (returns on reflash)
 #   $EXTRA          -> imported at runtime; lives OUTSIDE the module so it survives updates
+#
+# SAFETY MODEL (why apply can never cause "all apps: no internet"):
+#   - The 145+ system roots are cached ONCE into a persistent BASELINE ($BASE), taken only when
+#     APEX is pristine (at boot, before our overlay). Every rebuild uses the baseline — NEVER the
+#     live/overlaid/mid-unmount APEX. This kills the old race where a runtime apply snapshotted an
+#     empty APEX and dropped the system roots.
+#   - The new store is built in a STAGING tmpfs and count-checked BEFORE the live overlay is touched.
+#   - After binding, it is VERIFIED; on any failure it ROLLS BACK to the real APEX so apps keep a
+#     complete trust store (internet stays up; the CA just isn't applied until the next boot).
 MODDIR=${0%/*}
 LEGACY=/system/etc/security/cacerts
 APEX=/apex/com.android.conscrypt/cacerts
 USER_STORE=/data/misc/user/0/cacerts-added
 EXTRA=/data/adb/apex_burp_ca_certs
+BASE=/data/adb/apex_burp_ca_base       # pristine system-CA baseline (persistent, survives updates)
 FLAG=$MODDIR/disabled
 LOG=$MODDIR/certfix.log
+LOCKDIR=$MODDIR/.apply.lock
+MIN_CERTS=50                            # safety floor: never bind a store with fewer roots than this
 
 mkdir -p "$EXTRA" 2>/dev/null
 
@@ -56,7 +68,38 @@ remove_user_cert() {
   done
 }
 
+# Refresh the pristine baseline ONLY when APEX is not currently our overlay (i.e. at boot,
+# before we bind). Atomic + count-guarded so a bad/partial read never clobbers a good baseline.
+refresh_baseline() {
+  grep -q " $APEX " /proc/mounts 2>/dev/null && return   # overlay present -> not pristine, keep baseline
+  cnt=$(ls $APEX 2>/dev/null | wc -l)
+  [ "$cnt" -ge "$MIN_CERTS" ] || return                  # APEX looks incomplete -> don't touch baseline
+  rm -rf "$BASE.tmp"; mkdir -p "$BASE.tmp"
+  cp $APEX/* "$BASE.tmp/" 2>/dev/null
+  if [ "$(ls "$BASE.tmp" 2>/dev/null | wc -l)" -ge "$MIN_CERTS" ]; then
+    rm -rf "$BASE"; mv "$BASE.tmp" "$BASE"
+  fi
+  rm -rf "$BASE.tmp"
+}
+
+# Tear down any existing overlay (idempotent). Safe because callers refill from a stable source.
+teardown_overlay() {
+  n=0; while [ $n -lt 8 ] && grep -q " $APEX " /proc/mounts 2>/dev/null; do
+    umount $APEX 2>/dev/null || umount -l $APEX 2>/dev/null || break; n=$((n+1)); done
+  n=0; while [ $n -lt 8 ] && grep -q " $LEGACY " /proc/mounts 2>/dev/null; do
+    umount $LEGACY 2>/dev/null || umount -l $LEGACY 2>/dev/null || break; n=$((n+1)); done
+}
+
 apply() {
+  # Single-flight lock so a WebUI double-tap can't run two applies at once.
+  # Self-heal: clear a stale lock (>60s) left by a crashed run so boot injection never deadlocks.
+  if [ -d "$LOCKDIR" ] && [ -n "$(find "$LOCKDIR" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
+    rmdir "$LOCKDIR" 2>/dev/null
+  fi
+  if ! mkdir "$LOCKDIR" 2>/dev/null; then
+    echo "=== $(date) apply SKIPPED (already running) ===" >> "$LOG"; return
+  fi
+
   echo "=== $(date) apply ===" > "$LOG"
 
   # 1. Wait until APEX conscrypt cacerts is populated (timing guard, max ~10s)
@@ -67,66 +110,63 @@ apply() {
   done
   echo "apex ready after ${i}x100ms, apex_count=$(ls $APEX 2>/dev/null | wc -l)" >> "$LOG"
 
-  # 1b. Clear any previous overlay so mounts don't stack on repeated apply.
-  #     Only unmounts real mountpoints (our tmpfs/bind); the untouched system dir isn't one.
-  n=0; while [ $n -lt 8 ] && grep -q " $APEX " /proc/mounts 2>/dev/null; do
-    umount $APEX 2>/dev/null || umount -l $APEX 2>/dev/null || break; n=$((n+1)); done
-  n=0; while [ $n -lt 8 ] && grep -q " $LEGACY " /proc/mounts 2>/dev/null; do
-    umount $LEGACY 2>/dev/null || umount -l $LEGACY 2>/dev/null || break; n=$((n+1)); done
+  # 2. Refresh the pristine baseline while APEX is un-overlaid (boot), then REQUIRE a healthy one.
+  refresh_baseline
+  base_cnt=$(ls "$BASE" 2>/dev/null | wc -l)
+  if [ "$base_cnt" -lt "$MIN_CERTS" ]; then
+    echo "ABORT: no healthy baseline (have=$base_cnt need>=$MIN_CERTS) — leaving current store untouched" >> "$LOG"
+    echo "=== done (aborted) ===" >> "$LOG"; rmdir "$LOCKDIR" 2>/dev/null; return
+  fi
+  echo "baseline system CAs=$base_cnt" >> "$LOG"
 
-  # 2. Snapshot current APEX system CAs
-  TMP=/dev/.apex_ca_snap
-  rm -rf $TMP; mkdir -p $TMP
-  cp $APEX/* $TMP/ 2>/dev/null
+  # 3. Build the NEW store in a STAGING tmpfs (baseline + managed). Live overlay untouched yet.
+  STAGE=/dev/.ca_stage
+  rm -rf $STAGE; mkdir -p $STAGE
+  cp "$BASE"/* $STAGE/ 2>/dev/null
+  src_files | while read -r c; do cp "$c" "$STAGE/$(basename "$c")" 2>/dev/null; done
+  stage_cnt=$(ls $STAGE 2>/dev/null | wc -l)
+  if [ "$stage_cnt" -lt "$MIN_CERTS" ]; then
+    echo "ABORT: staging too small ($stage_cnt) — refusing to bind (would break TLS)" >> "$LOG"
+    rm -rf $STAGE; echo "=== done (aborted) ===" >> "$LOG"; rmdir "$LOCKDIR" 2>/dev/null; return
+  fi
 
-  # 3. tmpfs over legacy dir, refill with system CAs + every bundled/imported cert
+  # 4. Swap in the new store: tear down old overlay, fill LEGACY FROM STAGING (stable), then bind.
+  teardown_overlay
   mount -t tmpfs tmpfs $LEGACY
-  cp $TMP/* $LEGACY/ 2>/dev/null
-  src_files | while read -r c; do cp "$c" "$LEGACY/$(basename "$c")" 2>/dev/null; done
+  cp $STAGE/* $LEGACY/ 2>/dev/null
   chown 0:0 $LEGACY/* 2>/dev/null
   chmod 644 $LEGACY/* 2>/dev/null
   chcon u:object_r:system_security_cacerts_file:s0 $LEGACY/* 2>/dev/null
   echo "legacy tmpfs count=$(ls $LEGACY | wc -l)" >> "$LOG"
+  rm -rf $STAGE
 
-  # 4. Bind the populated legacy dir over the read-only APEX dir
   mount -o bind $LEGACY $APEX 2>>"$LOG"
-  echo "apex after bind=$(ls $APEX | wc -l)" >> "$LOG"
+  bound=$(ls $APEX 2>/dev/null | wc -l)
+  echo "apex after bind=$bound" >> "$LOG"
 
-  # 4b. Self-test + one auto-retry. post-fs-data runs in the base namespace zygote
-  #     inherits, so a managed CA visible HERE strongly implies apps will inherit it.
-  #     If it's missing (bind rejected / APEX not ready / unsupported), retry once and log.
+  # 5. Post-bind verification. Store MUST still hold the system roots AND our cert; else ROLL BACK.
+  managed_ok=yes
   first=$(src_files | head -n1)
-  if [ -n "$first" ]; then
-    bn=$(basename "$first")
-    if ! ls "$APEX/$bn" >/dev/null 2>&1; then
-      echo "self-test: managed CA missing after bind — retrying once" >> "$LOG"
-      umount $APEX 2>/dev/null || umount -l $APEX 2>/dev/null
-      mount -o bind $LEGACY $APEX 2>>"$LOG"
-    fi
-    if ls "$APEX/$bn" >/dev/null 2>&1; then
-      echo "self-test: PASS (managed CA present in APEX overlay)" >> "$LOG"
-    else
-      echo "self-test: FAIL (managed CA NOT in APEX — mount may be unsupported on this device)" >> "$LOG"
-    fi
+  if [ -n "$first" ] && ! ls "$APEX/$(basename "$first")" >/dev/null 2>&1; then managed_ok=no; fi
+  if [ "$bound" -lt "$MIN_CERTS" ] || [ "$managed_ok" = no ]; then
+    echo "VERIFY FAIL (bound=$bound managed_ok=$managed_ok) — rolling back to real APEX" >> "$LOG"
+    teardown_overlay
+    echo "rolled back: apps keep the real system trust store (internet safe; CA not applied)" >> "$LOG"
   else
-    echo "self-test: SKIP (no bundled/imported CA yet)" >> "$LOG"
+    echo "VERIFY PASS (bound=$bound, managed CA present)" >> "$LOG"
   fi
-  rm -rf $TMP
 
-  # 5. Install the CAs into EVERY user's USER trust store (for Chrome & Chromium browsers).
-  #    Chrome enforces Certificate Transparency for certs chaining to a SYSTEM root and
-  #    rejects the Burp CA (ERR_CERTIFICATE_TRANSPARENCY_REQUIRED). A USER-installed root
-  #    is CT-exempt, so Chrome trusts it. Covers owner (user 0) + secondary/work profiles.
+  # 6. Install the CAs into EVERY user's USER trust store (Chrome/Chromium, CT-exempt).
   users=$(install_user_stores)
   echo "user stores patched=$users (user0 count=$(ls $USER_STORE 2>/dev/null | wc -l))" >> "$LOG"
 
   echo "=== done ===" >> "$LOG"
+  rmdir "$LOCKDIR" 2>/dev/null
 }
 
 remove() {
   echo "=== $(date) remove ===" >> "$LOG"
-  umount $APEX 2>/dev/null || umount -l $APEX 2>/dev/null
-  umount $LEGACY 2>/dev/null || umount -l $LEGACY 2>/dev/null
+  teardown_overlay
   src_files | while read -r c; do remove_user_cert "$(basename "$c")"; done
   echo "remove done" >> "$LOG"
 }
@@ -152,6 +192,7 @@ status() {
   echo "apex_count=$AC"
   echo "user_count=$(ls $USER_STORE 2>/dev/null | wc -l)"
   echo "user_stores=$(ls -d /data/misc/user/*/cacerts-added 2>/dev/null | wc -l)"
+  echo "baseline=$(ls "$BASE" 2>/dev/null | wc -l)"
   echo "burp_in_apex=$found"
 }
 
@@ -209,5 +250,5 @@ case "$1" in
   apps)   apps ;;
   check)  check "$2" ;;
   del)    del "$2" ;;
-  *) echo "usage: $0 {apply|remove|status|list|del <name>}"; exit 1 ;;
+  *) echo "usage: $0 {apply|remove|status|list|apps|check <pkg>|del <name>}"; exit 1 ;;
 esac

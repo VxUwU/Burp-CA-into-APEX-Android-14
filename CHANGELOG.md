@@ -2,6 +2,39 @@
 
 All notable changes to this module. Dates are ISO (UTC).
 
+## [v2.5] — 2026-08-12
+### Added
+- **`docs/TROUBLESHOOTING.md`** — field notes from real interception sessions: the MIUI "trust this
+  certificate?" prompt that must be tapped before a new CA is honored (the #1 gotcha); "no internet =
+  wrong proxy IP" and the `adb reverse` loopback fix; bank apps showing the pristine store because
+  root-hiding (Umount Modules / Isolation Policy) unmounted the overlay; pinning → Frida/objection;
+  and empty-response crashes when Burp's upstream can't reach an internal/VPN-only API.
+- **`scripts/make_custom_ca.py`** — generate a neutral-named CA (stealth) for Burp; computes the
+  Android `subject_hash_old` in-browser-free Python (verified against openssl), emits `.p12`/`.pem`/
+  `<hash>.0`, and prints the Burp-import + device-install steps.
+- README now links the troubleshooting guide.
+
+## [v2.4] — 2026-08-12
+### Fixed (critical)
+- **`apply()` could drop the system roots on a runtime re-apply → "all apps: no internet".**
+  The old flow unmounted the live overlay and then snapshotted `/apex/...`; at runtime the APEX dir is
+  busy, so the unmount fell back to a **lazy** unmount, and the snapshot raced it and read an **empty**
+  APEX — rebuilding a trust store that had the Burp CA but **none of the ~145 system roots**, so every
+  app failed TLS. Reworked `apply()` to be fail-safe:
+  - **Persistent system-CA baseline** (`/data/adb/apex_burp_ca_base`), captured only when APEX is
+    pristine (at boot, pre-overlay). Every rebuild sources the baseline — **never** the live/overlaid/
+    mid-unmount APEX. Refreshed each boot to track Conscrypt-APEX updates.
+  - **Staging + count guard**: the new store is built in a staging tmpfs and must hold ≥ `MIN_CERTS`
+    (50) before the live overlay is touched; otherwise `apply` **aborts and leaves the current store
+    intact**.
+  - **Post-bind verify + rollback**: after binding, it confirms the count and that the managed CA is
+    present; on any failure it **rolls back to the real APEX** so apps keep a complete trust store
+    (internet stays up; the CA just isn't applied until the next boot).
+  - **Single-flight lock** (self-healing after 60 s) so a WebUI double-tap can't run two applies at once.
+  Verified with a mount-simulation harness across three scenarios (normal boot, runtime empty-APEX
+  race, and no-baseline) — the race scenario now rebuilds to a full 146-cert store instead of breaking.
+- `uninstall.sh` also removes the baseline dir; `status` now reports `baseline=<n>`.
+
 ## [v2.3] — 2026-08-11
 ### Changed
 - **WebUI battery/GPU optimization.** The perpetual aurora and button-shine animations now pause when

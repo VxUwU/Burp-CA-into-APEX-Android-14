@@ -5,6 +5,7 @@
 # Covers EVERY Android user (owner + secondary + work profile), matching inject.sh.
 MODDIR=${0%/*}
 EXTRA=/data/adb/apex_burp_ca_certs
+BASE=/data/adb/apex_burp_ca_base
 
 for c in "$MODDIR"/certs/* "$EXTRA"/*; do
   [ -f "$c" ] || continue
@@ -14,4 +15,4 @@ for c in "$MODDIR"/certs/* "$EXTRA"/*; do
   done
 done
 
-rm -rf "$EXTRA" 2>/dev/null
+rm -rf "$EXTRA" "$BASE" 2>/dev/null

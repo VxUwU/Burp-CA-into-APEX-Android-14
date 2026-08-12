@@ -1,6 +1,6 @@
 id=apex_burp_ca
 name=Burp CA into APEX (Android 14+)
-version=v2.3
-versionCode=14
+version=v2.5
+versionCode=16
 author=VxU
-description=Injects PortSwigger/Burp CA into the conscrypt APEX trust store (all apps) AND the user trust store (Chrome/Chromium, CT-exempt) at post-fs-data before zygote. Green glassy WebUI: Control (enable/disable), Certs (view/import/delete CAs, imports survive module updates, no openssl needed), Log. Firefox needs a one-time about:config toggle. Reversible: disable/remove module + reboot.
+description=Injects PortSwigger/Burp CA into the conscrypt APEX trust store (all apps) AND the user trust store (Chrome/Chromium, CT-exempt) at post-fs-data before zygote. v2.4 hardens apply(): persistent system-CA baseline + staging + count guard + post-bind verify/rollback, so a runtime re-apply can never drop the system roots (no more "all apps: no internet"). Green glassy WebUI: Control, Certs (view/import/delete, no openssl), Verify (per-app trust check), Log. Firefox needs a one-time about:config toggle.

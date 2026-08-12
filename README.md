@@ -21,6 +21,7 @@ Old "trust user certs" modules write to `/system/etc/...` which is now **ignored
 
 📖 **New here? Start with the step-by-step [Getting Started guide](docs/GETTING_STARTED.md).**
 Full technical writeup: [`docs/Android14+_APEX_Conscrypt_CA_Injection.md`](docs/Android14+_APEX_Conscrypt_CA_Injection.md)
+🛠️ **Something not intercepting?** Field-tested fixes in [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) (MIUI trust prompt, proxy IP / `adb reverse`, root-hiding unmount, pinning, VPN upstream).
 
 ## Repo layout
 
