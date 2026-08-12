@@ -97,12 +97,16 @@ re-reads the trust store. Browsers are a smoke-test only — real targets are th
 
 ---
 
-## Custom / stealth CA
-Burp's default CA is named "PortSwigger CA", which anti-tamper apps scan for. Generate a neutral-named
-CA and import it into Burp:
-```
-python scripts/make_custom_ca.py --cn "Internal Root CA"
-```
-Outputs a `.p12` (import into Burp: Proxy settings → CA cert → **Import → from PKCS#12 keystore**),
-a `.pem`/`<hash>.0` for the device, and prints step-by-step instructions. Then **trust the MIUI
-prompt** (§1). See `scripts/make_custom_ca.py` header for details.
+## CA mismatch — `certificate_unknown` / `ERR_CERT_AUTHORITY_INVALID` on every app
+**Symptom:** the trust store clearly contains a CA and the MIUI prompt was trusted, yet apps (and
+Chrome) still fail with `certificate_unknown` / `ERR_CERT_AUTHORITY_INVALID`.
+**Cause:** the CA trusted on the device is **not the CA Burp is actually signing with**. This is the
+classic trap when you install a *custom-named* CA on the device but forget that **Burp still signs
+with its own loaded CA** (by default `PortSwigger CA`). Device trusts X, Burp presents a cert signed
+by Y → rejected.
+**Fix:** make the two match. Simplest — just trust **Burp's own CA** on the device (export it from
+`http://burpsuite/cert` via the proxy, or Proxy settings → Import/export CA certificate → Export, and
+add that to the module). Only bother with a renamed/custom CA if you also **import its `.p12` into
+Burp** so Burp signs with it — otherwise the mismatch above is guaranteed.
+**Verify which CA Burp uses:** through the proxy, fetch `http://burpsuite/cert` and check its
+subject; it must equal the CA in the device trust store.

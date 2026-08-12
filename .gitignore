@@ -27,8 +27,3 @@ module-source/certs/*.0
 *.pfx
 private*
 *_private*
-
-# make_custom_ca.py working folders (generated CA material — keys, certs, inputs)
-scripts/custom_ca/in/*
-scripts/custom_ca/out/*
-!scripts/custom_ca/**/.gitkeep

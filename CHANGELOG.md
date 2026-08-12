@@ -2,6 +2,18 @@
 
 All notable changes to this module. Dates are ISO (UTC).
 
+## [v2.7] — 2026-08-12
+### Removed
+- **`scripts/make_custom_ca.py` and the custom-CA workflow.** A custom-named CA installed only on the
+  device is useless on its own — Burp still signs with its own loaded CA, so a device-only custom CA
+  guarantees a `certificate_unknown` / `ERR_CERT_AUTHORITY_INVALID` mismatch unless you also import
+  its `.p12` into Burp. The extra step caused more failures than the stealth benefit was worth for
+  ordinary app pentesting. Just trust Burp's own CA on the device.
+### Docs
+- `TROUBLESHOOTING.md`: replaced the custom-CA section with a **CA-mismatch** entry — the real cause
+  of `certificate_unknown` on every app (device trusts one CA, Burp signs with another) and how to
+  verify Burp's CA via `http://burpsuite/cert`.
+
 ## [v2.6] — 2026-08-12
 ### Added
 - **`service.sh` + zygote-namespace injection (`inject_zygotes`).** On KernelSU/SukiSU builds where
