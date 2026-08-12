@@ -2,6 +2,22 @@
 
 All notable changes to this module. Dates are ISO (UTC).
 
+## [v2.6] — 2026-08-12
+### Added
+- **`service.sh` + zygote-namespace injection (`inject_zygotes`).** On KernelSU/SukiSU builds where
+  the zygote runs in a mount namespace isolated from init, the pre-zygote (post-fs-data) global mount
+  never reaches apps. A late_start service now re-runs `apply()` after the zygote is up and injects
+  the overlay directly into each zygote's mount namespace, so apps forked afterward inherit the CA.
+### Fixed
+- **Boot scripts no longer depend on the executable bit.** `post-fs-data.sh` / `service.sh` now call
+  `sh inject.sh` instead of `exec inject.sh`, so injection runs even when the module manager (e.g. the
+  `ksud` CLI) installs the scripts as `0644`.
+### Operational note
+- **"Umount modules" (KernelSU/SukiSU global default, or per-app profile) must be OFF for the target
+  app(s).** With it ON, the kernel strips the overlay from every app that lacks a profile, so the app
+  sees the pristine store (APEX active = no) even though the boot log shows `VERIFY PASS`. See
+  `docs/TROUBLESHOOTING.md`.
+
 ## [v2.5] — 2026-08-12
 ### Added
 - **`docs/TROUBLESHOOTING.md`** — field notes from real interception sessions: the MIUI "trust this

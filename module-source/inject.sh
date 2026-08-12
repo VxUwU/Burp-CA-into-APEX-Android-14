@@ -90,6 +90,45 @@ teardown_overlay() {
     umount $LEGACY 2>/dev/null || umount -l $LEGACY 2>/dev/null || break; n=$((n+1)); done
 }
 
+# Write the per-namespace overlay helper (paths baked in). Executed inside each zygote's
+# mount namespace via nsenter. Kept on /data so it's visible in every namespace.
+write_overlay_script() {
+  cat > "$MODDIR/.overlay.sh" <<EOF
+#!/system/bin/sh
+L=$LEGACY; A=$APEX
+n=0; while [ \$n -lt 8 ] && grep -q " \$A " /proc/mounts 2>/dev/null; do umount \$A 2>/dev/null || umount -l \$A 2>/dev/null || break; n=\$((n+1)); done
+grep -q " \$L " /proc/mounts 2>/dev/null && { umount \$L 2>/dev/null || umount -l \$L 2>/dev/null; }
+mount -t tmpfs tmpfs \$L
+cp $BASE/* \$L/ 2>/dev/null
+for c in $MODDIR/certs/* $EXTRA/*; do [ -f "\$c" ] && cp "\$c" "\$L/" 2>/dev/null; done
+chown 0:0 \$L/* 2>/dev/null; chmod 644 \$L/* 2>/dev/null
+chcon u:object_r:system_security_cacerts_file:s0 \$L/* 2>/dev/null
+mount -o bind \$L \$A 2>/dev/null
+EOF
+  chmod 755 "$MODDIR/.overlay.sh"
+}
+
+# All zygote pids (main + webview + per-app zygotes), excluding USAP pool blanks.
+zygote_pids() {
+  ps -A -o PID,NAME 2>/dev/null | grep -iE 'zygote' | grep -viE 'usap' | awk '{print $1}'
+}
+
+# Build the overlay INSIDE each zygote's mount namespace so apps forked afterward inherit
+# it. Required where zygote runs in a mount namespace isolated from init (SukiSU/KernelSU
+# mount-hiding), so the boot-time global mount never reaches apps. Reads the pristine
+# baseline (never the live APEX). Apps already running keep their old view until restarted.
+inject_zygotes() {
+  [ "$(ls "$BASE" 2>/dev/null | wc -l)" -ge "$MIN_CERTS" ] || { echo "inject_zygotes: no baseline, skip" >> "$LOG"; return; }
+  command -v nsenter >/dev/null 2>&1 || { echo "inject_zygotes: no nsenter, skip" >> "$LOG"; return; }
+  write_overlay_script
+  cnt=0
+  for ZY in $(zygote_pids); do
+    [ -e "/proc/$ZY/ns/mnt" ] || continue
+    nsenter -t "$ZY" -m -- sh "$MODDIR/.overlay.sh" 2>/dev/null && cnt=$((cnt+1))
+  done
+  echo "inject_zygotes: injected into $cnt zygote ns" >> "$LOG"
+}
+
 apply() {
   # Single-flight lock so a WebUI double-tap can't run two applies at once.
   # Self-heal: clear a stale lock (>60s) left by a crashed run so boot injection never deadlocks.
@@ -155,6 +194,11 @@ apply() {
   else
     echo "VERIFY PASS (bound=$bound, managed CA present)" >> "$LOG"
   fi
+
+  # 5b. Inject into the zygote namespace(s) so apps inherit the overlay on setups where the
+  #     init/global mount does not reach app namespaces (SukiSU/KernelSU mount-isolation).
+  #     No-op at post-fs-data (no zygote yet); the boot service re-runs apply once zygote is up.
+  inject_zygotes
 
   # 6. Install the CAs into EVERY user's USER trust store (Chrome/Chromium, CT-exempt).
   users=$(install_user_stores)

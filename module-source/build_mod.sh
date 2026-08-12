@@ -13,9 +13,10 @@ mkdir -p "$OUT" "$STAGE/certs" "$STAGE/webroot"
 # LF-normalize text files, copy cert(s)
 tr -d '\r' < "$HERE/module.prop"     > "$STAGE/module.prop"
 tr -d '\r' < "$HERE/post-fs-data.sh" > "$STAGE/post-fs-data.sh"
+tr -d '\r' < "$HERE/service.sh"      > "$STAGE/service.sh"
 tr -d '\r' < "$HERE/inject.sh"       > "$STAGE/inject.sh"
 tr -d '\r' < "$HERE/uninstall.sh"    > "$STAGE/uninstall.sh"
-chmod 755 "$STAGE/post-fs-data.sh" "$STAGE/inject.sh" "$STAGE/uninstall.sh"
+chmod 755 "$STAGE/post-fs-data.sh" "$STAGE/service.sh" "$STAGE/inject.sh" "$STAGE/uninstall.sh"
 tr -d '\r' < "$HERE/webroot/index.html" > "$STAGE/webroot/index.html"
 cp "$HERE"/certs/*.0 "$STAGE/certs/" 2>/dev/null || true
 if ls "$STAGE"/certs/*.0 >/dev/null 2>&1; then

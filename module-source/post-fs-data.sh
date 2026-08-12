@@ -9,4 +9,5 @@ if [ -f "$MODDIR/disabled" ]; then
   exit 0
 fi
 
-exec "$MODDIR/inject.sh" apply
+# Use `sh` so this works even if the module manager didn't preserve the +x bit on inject.sh.
+exec sh "$MODDIR/inject.sh" apply
